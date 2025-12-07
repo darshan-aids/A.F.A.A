@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>A.F.A.A. | Autonomous Financial Accessibility Agent</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                lime: '#D2F159', // High-vis lime from reference
+                dark: '#0F0F12', // Main background (almost black)
+                card: '#1C1C21', // Card background (dark grey)
+                purple: '#8B5CF6', // Accent purple
+                cyan: '#00D9FF',
+                mint: '#00D084',
+                orange: '#FF6B35',
+              }
+            },
+            animation: {
+              'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              'scan': 'scan 2s linear infinite',
+            },
+            keyframes: {
+              scan: {
+                '0%': { transform: 'translateY(-100%)' },
+                '100%': { transform: 'translateY(100%)' },
+              }
+            },
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            }
+          },
+        },
+      }
+    </script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+      
+      /* Custom scrollbar for cyber-aesthetic */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #0F0F12; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #334155; 
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #475569; 
+      }
+      /* Global transitions */
+      * {
+        transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
+        transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+        transition-duration: 200ms;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "react": "https://aistudiocdn.com/react@^19.2.1"
+  }
+}
+</script>
+</head>
+  <body class="bg-brand-dark text-white font-sans antialiased overflow-hidden">
+    <div id="root"></div>
+  </body>
+</html>
