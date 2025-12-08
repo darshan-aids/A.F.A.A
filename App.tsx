@@ -399,10 +399,12 @@ const App: React.FC = () => {
     setIsSubmitting(true);
     setDashboardState(prev => ({ ...prev, lastTransactionStatus: 'pending' }));
 
+    // Capture values before clearing form
+    const recipient = dashboardState.transferForm.recipient;
+    const amount = parseFloat(dashboardState.transferForm.amount.replace(/[^0-9.]/g, ''));
+
     // Simulate transaction processing
     await delay(1500);
-
-    const amount = parseFloat(dashboardState.transferForm.amount.replace(/[^0-9.]/g, ''));
     
     setDashboardState(prev => ({
       ...prev,
@@ -422,7 +424,7 @@ const App: React.FC = () => {
     setMessages(prev => [...prev, {
       id: Date.now().toString(),
       sender: AgentType.MANAGER,
-      content: `Transfer of $${amount.toFixed(2)} to ${dashboardState.transferForm.recipient} completed successfully.`,
+      content: `Transfer of $${amount.toFixed(2)} to ${recipient} completed successfully.`,
       timestamp: new Date()
     }]);
   };

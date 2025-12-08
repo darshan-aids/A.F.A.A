@@ -18,6 +18,15 @@ interface MockFinancialDashboardProps {
   onToggleInputMode?: () => void;
 }
 
+// Utility function to format currency input
+const formatCurrencyInput = (value: string): string => {
+  // Allow only numbers and decimal point
+  const cleaned = value.replace(/[^0-9.]/g, '');
+  // Prevent multiple decimal points
+  const parts = cleaned.split('.');
+  return parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : cleaned;
+};
+
 export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
   state, 
   scanning, 
@@ -25,7 +34,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
   onFileUpload, 
   onNavigate,
   inputMode = 'agent',
-  formErrors = {},
+  formErrors,
   onFormInputChange,
   onFormSubmit,
   onFormClear,
@@ -423,7 +432,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                       Recipient {inputMode === 'manual' && <span className="text-brand-lime">*</span>}
                     </label>
                     <div className={`flex items-center gap-4 bg-[#151518] p-5 rounded-[1.5rem] border transition-all ${
-                      formErrors.recipient 
+                      formErrors?.recipient 
                         ? 'border-red-500/50' 
                         : inputMode === 'manual' 
                           ? 'border-brand-lime/30 group-focus-within:border-brand-lime/70' 
@@ -443,8 +452,8 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                           }}
                           placeholder={inputMode === 'agent' ? 'Agent controlled...' : 'Enter recipient name...'}
                           aria-label="Recipient Name"
-                          aria-invalid={!!formErrors.recipient}
-                          aria-describedby={formErrors.recipient ? 'recipient-error' : undefined}
+                          aria-invalid={!!formErrors?.recipient}
+                          aria-describedby={formErrors?.recipient ? 'recipient-error' : undefined}
                           className={`bg-transparent w-full focus:outline-none text-white placeholder:text-slate-600 font-medium ${
                             inputMode === 'manual' ? 'cursor-text' : 'cursor-not-allowed'
                           }`}
@@ -454,7 +463,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                          <span className="text-[10px] text-slate-500 font-mono bg-[#25252b] px-2 py-1 rounded">READ-ONLY</span>
                        )}
                     </div>
-                    {formErrors.recipient && (
+                    {formErrors?.recipient && (
                       <p id="recipient-error" className="mt-2 text-xs text-red-400 flex items-center gap-1" role="alert">
                         <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
@@ -473,7 +482,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                       Amount {inputMode === 'manual' && <span className="text-brand-lime">*</span>}
                     </label>
                     <div className={`flex items-center gap-4 bg-[#151518] p-5 rounded-[1.5rem] border transition-all ${
-                      formErrors.amount 
+                      formErrors?.amount 
                         ? 'border-red-500/50' 
                         : inputMode === 'manual' 
                           ? 'border-brand-lime/30 group-focus-within:border-brand-lime/70' 
@@ -487,11 +496,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                           readOnly={inputMode === 'agent'}
                           onChange={(e) => {
                             if (inputMode === 'manual') {
-                              // Allow only numbers and decimal point
-                              const value = e.target.value.replace(/[^0-9.]/g, '');
-                              // Prevent multiple decimal points
-                              const parts = value.split('.');
-                              const formattedValue = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : value;
+                              const formattedValue = formatCurrencyInput(e.target.value);
                               onFormInputChange?.('amount', formattedValue);
                             }
                           }}
@@ -502,8 +507,8 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                           }}
                           placeholder={inputMode === 'agent' ? 'Agent controlled...' : '0.00'}
                           aria-label="Transfer Amount"
-                          aria-invalid={!!formErrors.amount}
-                          aria-describedby={formErrors.amount ? 'amount-error' : undefined}
+                          aria-invalid={!!formErrors?.amount}
+                          aria-describedby={formErrors?.amount ? 'amount-error' : undefined}
                           className={`bg-transparent w-full focus:outline-none text-white text-2xl font-bold placeholder:text-slate-700 ${
                             inputMode === 'manual' ? 'cursor-text' : 'cursor-not-allowed'
                           }`}
@@ -513,7 +518,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                          <span className="text-[10px] text-slate-500 font-mono bg-[#25252b] px-2 py-1 rounded">READ-ONLY</span>
                        )}
                     </div>
-                    {formErrors.amount && (
+                    {formErrors?.amount && (
                       <p id="amount-error" className="mt-2 text-xs text-red-400 flex items-center gap-1" role="alert">
                         <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
@@ -521,7 +526,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                         {formErrors.amount}
                       </p>
                     )}
-                    {!formErrors.amount && inputMode === 'manual' && state.transferForm.amount && (
+                    {!formErrors?.amount && inputMode === 'manual' && state.transferForm.amount && (
                       <p className="mt-2 text-xs text-slate-500">
                         Available balance: ${state.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
