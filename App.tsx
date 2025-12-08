@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { processUserRequest, AgentResponse } from './services/geminiService';
 import { MockFinancialDashboard } from './components/MockFinancialDashboard';
@@ -5,10 +6,11 @@ import { AgentStatusPanel } from './components/AgentStatusPanel';
 import { SafetyModal, TransactionPreview } from './components/SafetyModal';
 import { ChatMessage, DashboardState, AgentType, ProcessingStep, SafetyStatus, AgentAction } from './types';
 import { MOCK_TRANSACTIONS } from './constants';
+import { detectNavigationTarget, AVAILABLE_PAGES } from './navigationMap';
 
 const INITIAL_DASHBOARD_STATE: DashboardState = {
   currentPage: 'overview',
-  balance: 975124.00, // Updated to match Darlene Robertson mockup
+  balance: 975124.00,
   transferForm: {
     recipient: '',
     amount: '',
@@ -33,6 +35,11 @@ const App: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [systemStatus, setSystemStatus] = useState<'IDLE' | 'PROCESSING' | 'WAITING_APPROVAL' | 'SAFE_MODE'>('IDLE');
   const [simpleMode, setSimpleMode] = useState(false);
+  
+  // NEW: Manual mode state
+  const [manualMode, setManualMode] = useState(false);
+  const [formErrors, setFormErrors] = useState<{recipient?: string; amount?: string}>({});
+  const [isSubmittingTransfer, setIsSubmittingTransfer] = useState(false);
   
   // Simulation State
   const [dashboardState, setDashboardState] = useState<DashboardState>(INITIAL_DASHBOARD_STATE);
@@ -60,8 +67,12 @@ const App: React.FC = () => {
       // Ctrl+T: Transfer shortcut
       if ((e.ctrlKey || e.metaKey) && e.key === 't') {
         e.preventDefault();
-        setInputValue("I want to make a transfer");
-        inputRef.current?.focus();
+        if (manualMode) {
+          setDashboardState(prev => ({ ...prev, currentPage: 'transfer' }));
+        } else {
+          setInputValue("I want to make a transfer");
+          inputRef.current?.focus();
+        }
       }
       // Ctrl+B: Balance shortcut
       if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
@@ -75,14 +86,123 @@ const App: React.FC = () => {
         setInputValue("Show my insights history");
         inputRef.current?.focus();
       }
+      // Ctrl+M: Toggle manual mode
+      if ((e.ctrlKey || e.metaKey) && e.key === 'm') {
+        e.preventDefault();
+        setManualMode(!manualMode);
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [manualMode]);
+
+  // --- Form Validation ---
+  const validateForm = () => {
+    const errors: {recipient?: string; amount?: string} = {};
+    
+    if (!dashboardState.transferForm.recipient.trim()) {
+      errors.recipient = 'Recipient is required';
+    } else if (!dashboardState.transferForm.recipient.includes('@') && !dashboardState.transferForm.recipient.match(/^[a-zA-Z\s]+$/)) {
+      errors.recipient = 'Enter a valid name or email';
+    }
+    
+    const amount = parseFloat(dashboardState.transferForm.amount.replace(/[^0-9.]/g, ''));
+    if (!dashboardState.transferForm.amount.trim()) {
+      errors.amount = 'Amount is required';
+    } else if (isNaN(amount) || amount <= 0) {
+      errors.amount = 'Enter a valid amount';
+    } else if (amount > dashboardState.balance) {
+      errors.amount = 'Insufficient balance';
+    }
+    
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  // --- Form Handlers ---
+  const handleFormFieldChange = (field: 'recipient' | 'amount' | 'note', value: string) => {
+    // Format amount field
+    if (field === 'amount') {
+      // Remove non-numeric characters except decimal point
+      const numericValue = value.replace(/[^0-9.]/g, '');
+      // Ensure only one decimal point
+      const parts = numericValue.split('.');
+      if (parts.length > 2) {
+        value = parts[0] + '.' + parts.slice(1).join('');
+      } else {
+        value = numericValue;
+      }
+    }
+    
+    setDashboardState(prev => ({
+      ...prev,
+      transferForm: {
+        ...prev.transferForm,
+        [field]: value
+      }
+    }));
+    
+    // Clear specific field error when user starts typing
+    if (formErrors[field as keyof typeof formErrors]) {
+      setFormErrors(prev => ({
+        ...prev,
+        [field]: undefined
+      }));
+    }
+  };
+
+  const handleManualTransferSubmit = async () => {
+    if (!validateForm()) return;
+    
+    setIsSubmittingTransfer(true);
+    
+    try {
+      // Simulate transfer processing
+      await delay(2000);
+      
+      const amount = parseFloat(dashboardState.transferForm.amount);
+      
+      // Update balance and add transaction
+      setDashboardState(prev => ({
+        ...prev,
+        balance: prev.balance - amount,
+        lastTransactionStatus: 'success',
+        transferForm: { recipient: '', amount: '', note: '' },
+        transactions: [
+          {
+            id: Date.now().toString(),
+            description: prev.transferForm.recipient,
+            amount: amount,
+            date: new Date().toLocaleDateString(),
+            type: 'debit',
+            category: 'Transfer'
+          },
+          ...prev.transactions
+        ]
+      }));
+      
+      // Show success message
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        sender: AgentType.MANAGER,
+        content: `Transfer of $${amount.toFixed(2)} to ${dashboardState.transferForm.recipient} completed successfully.`,
+        timestamp: new Date()
+      }]);
+      
+    } catch (error) {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        sender: AgentType.MANAGER,
+        content: "Transfer failed. Please try again.",
+        timestamp: new Date()
+      }]);
+    } finally {
+      setIsSubmittingTransfer(false);
+    }
+  };
 
   // --- Handlers ---
-
   const handleManualNavigation = (page: DashboardState['currentPage']) => {
     setDashboardState(prev => ({ ...prev, currentPage: page }));
   };
@@ -101,7 +221,7 @@ const App: React.FC = () => {
     setInputValue('');
     setIsProcessing(true);
     setSystemStatus('PROCESSING');
-    setAgentSteps([]); // Clear previous steps
+    setAgentSteps([]);
 
     // 1. Manager Plans
     addStep(AgentType.MANAGER, 'processing', 'Analyzing user request...');
@@ -121,7 +241,6 @@ const App: React.FC = () => {
 
       // 3. Safety Check
       if (response.safety === SafetyStatus.REQUIRE_CONFIRMATION) {
-        // Extract details for the modal
         const details = extractTransactionDetails(response.actions, dashboardState);
         setTransactionPreview(details);
 
@@ -144,7 +263,6 @@ const App: React.FC = () => {
         timestamp: new Date()
       }]);
       
-      // Announce final message
       if (liveRegionRef.current) {
         liveRegionRef.current.innerText = response.message;
       }
@@ -172,7 +290,6 @@ const App: React.FC = () => {
     let to = 'Unknown';
     let note = '';
 
-    // Try to find values in actions
     actions.forEach(action => {
       if (action.type === 'FILL_INPUT' && action.target && action.value) {
         if (action.target.includes('amount')) amount = action.value;
@@ -181,7 +298,6 @@ const App: React.FC = () => {
       }
     });
 
-    // Fallback to current form state if actions didn't have them (e.g., if they were filled in previous steps)
     if (amount === '0' && currentState.transferForm.amount) amount = currentState.transferForm.amount;
     if (to === 'Unknown' && currentState.transferForm.recipient) to = currentState.transferForm.recipient;
 
@@ -197,14 +313,6 @@ const App: React.FC = () => {
     };
   };
 
-  const normalizeTarget = (target: string | undefined): 'overview' | 'transfer' | 'settings' | 'transactions' => {
-    const t = (target || '').toLowerCase();
-    if (t.includes('transfer')) return 'transfer';
-    if (t.includes('setting')) return 'settings';
-    if (t.includes('transaction') || t.includes('history') || t.includes('insight')) return 'transactions';
-    return 'overview';
-  };
-
   const executeActionSequence = async (actions: AgentAction[]) => {
     if (!actions || !Array.isArray(actions)) {
       console.warn("No valid actions to execute");
@@ -216,26 +324,47 @@ const App: React.FC = () => {
     for (const action of actions) {
       const confidence = action.confidence || 95; 
 
-      if (action.target) {
-        let highlightId = action.target.toLowerCase();
+      if (action.target || action.page) {
+        let highlightId = (action.target || action.page || '').toLowerCase();
         if (highlightId.includes('submit')) highlightId = 'submit';
         if (highlightId.includes('recipient')) highlightId = 'recipient';
         if (highlightId.includes('amount')) highlightId = 'amount';
         if (highlightId.includes('chart')) highlightId = 'chart';
         if (highlightId.includes('balance')) highlightId = 'balance';
-        if (highlightId.includes('overview') || highlightId.includes('transfer') || highlightId.includes('transaction') || highlightId.includes('nav')) highlightId = 'nav';
+        if (highlightId.includes('overview') || highlightId.includes('transfer') || highlightId.includes('transaction') || highlightId.includes('insight') || highlightId.includes('nav')) highlightId = 'nav';
         
         setActiveHighlight(highlightId);
       }
 
       switch (action.type) {
         case 'NAVIGATE':
-          const normalizedPage = normalizeTarget(action.target);
-          addStep(AgentType.EXECUTOR, 'processing', `Navigating to ${normalizedPage}...`, confidence);
+          const requestedPage = (action.page || action.target || '').toLowerCase();
+          let targetPageId = '';
+
+          // 1. Try direct ID match from map
+          const directMatch = AVAILABLE_PAGES.find(p => p.id === requestedPage);
+          if (directMatch) {
+             targetPageId = directMatch.id;
+          } else {
+             // 2. Try alias detection
+             const detected = detectNavigationTarget(requestedPage);
+             if (detected) {
+               targetPageId = detected.id;
+             }
+          }
+
+          // 3. Fallback logic
+          if (!targetPageId) {
+             if (requestedPage.includes('setting')) targetPageId = 'settings';
+             else if (requestedPage.includes('transfer')) targetPageId = 'transfer';
+             else targetPageId = 'overview';
+          }
+          
+          addStep(AgentType.EXECUTOR, 'processing', `Navigating to ${targetPageId}...`, confidence);
           await delay(1000);
           setDashboardState(prev => ({
             ...prev,
-            currentPage: normalizedPage,
+            currentPage: targetPageId as any,
             lastTransactionStatus: 'idle'
           }));
           updateLastStepStatus('completed');
@@ -275,7 +404,6 @@ const App: React.FC = () => {
           await delay(2000);
           addStep(AgentType.EXECUTOR, 'processing', 'Structuring tabular data...', confidence);
           await delay(1000);
-          // Simulate extracted data merge
           setDashboardState(prev => ({
             ...prev,
             transactions: [...(action.value ? JSON.parse(action.value) : []), ...prev.transactions]
@@ -367,14 +495,14 @@ const App: React.FC = () => {
       case 'PROCESSING': return 'text-brand-cyan drop-shadow-[0_0_8px_rgba(0,217,255,0.5)]';
       case 'WAITING_APPROVAL': return 'text-brand-orange drop-shadow-[0_0_8px_rgba(255,107,53,0.5)]';
       case 'SAFE_MODE': return 'text-brand-mint';
-      default: return 'text-brand-mint drop-shadow-[0_0_8px_rgba(0,208,132,0.3)]'; // Idle Green
+      default: return 'text-brand-mint drop-shadow-[0_0_8px_rgba(0,208,132,0.3)]';
     }
   };
 
   const getStatusDot = (status: string) => {
     if (status === 'PROCESSING') return <div className="w-2.5 h-2.5 rounded-full bg-brand-cyan animate-pulse-fast shadow-[0_0_10px_#00D9FF]"></div>;
     if (status === 'WAITING_APPROVAL') return <div className="w-2.5 h-2.5 rounded-full bg-brand-orange animate-pulse shadow-[0_0_10px_#FF6B35]"></div>;
-    return <div className="w-2.5 h-2.5 rounded-full bg-brand-mint shadow-[0_0_8px_#00D084]"></div>; // Idle Green with glow
+    return <div className="w-2.5 h-2.5 rounded-full bg-brand-mint shadow-[0_0_8px_#00D084]"></div>;
   };
 
   return (
@@ -407,16 +535,27 @@ const App: React.FC = () => {
           <div className="flex justify-between items-center mt-2">
              <div className="flex gap-2 text-[10px] text-slate-500 font-mono">
                <span className="bg-[#1C1C21] px-1.5 py-0.5 rounded border border-[#25252b]">Ctrl+T Transfer</span>
-               <span className="bg-[#1C1C21] px-1.5 py-0.5 rounded border border-[#25252b]">Ctrl+B Balance</span>
+               <span className="bg-[#1C1C21] px-1.5 py-0.5 rounded border border-[#25252b]">Ctrl+M Manual</span>
              </div>
 
-            <button 
-              onClick={() => setSimpleMode(!simpleMode)}
-              className={`flex items-center gap-2 px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all ${simpleMode ? 'bg-brand-purple/20 border-brand-purple text-brand-purple shadow-[0_0_10px_rgba(139,92,246,0.2)]' : 'bg-[#1C1C21] border-[#25252b] text-slate-400 hover:border-slate-600'}`}
-            >
-              <div className={`w-1.5 h-1.5 rounded-full ${simpleMode ? 'bg-brand-purple' : 'bg-slate-500'}`}></div>
-              SIMPLE MODE
-            </button>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => setSimpleMode(!simpleMode)}
+                className={`flex items-center gap-2 px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all ${simpleMode ? 'bg-brand-purple/20 border-brand-purple text-brand-purple shadow-[0_0_10px_rgba(139,92,246,0.3)]' : 'bg-[#1C1C21] border-[#25252b] text-slate-500'}`}
+              >
+                <div className={`w-1.5 h-1.5 rounded-full ${simpleMode ? 'bg-brand-purple' : 'bg-slate-500'}`}></div>
+                SIMPLE MODE
+              </button>
+              
+              {/* NEW: Manual Mode Toggle */}
+              <button 
+                onClick={() => setManualMode(!manualMode)}
+                className={`flex items-center gap-2 px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all ${manualMode ? 'bg-brand-lime/20 border-brand-lime text-brand-lime shadow-[0_0_10px_rgba(210,241,89,0.3)]' : 'bg-[#1C1C21] border-[#25252b] text-slate-500'}`}
+              >
+                <div className={`w-1.5 h-1.5 rounded-full ${manualMode ? 'bg-brand-lime' : 'bg-slate-500'}`}></div>
+                MANUAL
+              </button>
+            </div>
           </div>
         </div>
 
@@ -446,27 +585,29 @@ const App: React.FC = () => {
               <div ref={messagesEndRef} />
            </div>
 
-           <div className="p-4 border-t border-[#25252b] bg-[#0F0F12]">
-             <div className="flex gap-2 relative">
-               <input
-                 ref={inputRef}
-                 type="text"
-                 value={inputValue}
-                 onChange={(e) => setInputValue(e.target.value)}
-                 onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                 placeholder="Type instructions..."
-                 className="flex-1 bg-[#1C1C21] border border-[#25252b] text-slate-200 rounded-lg p-3 text-sm focus:border-brand-cyan focus:outline-none focus:ring-1 focus:ring-brand-cyan transition-all placeholder:text-slate-600"
-                 disabled={isProcessing}
-               />
-               <button 
-                onClick={handleSendMessage}
-                disabled={isProcessing}
-                className="bg-brand-cyan hover:bg-cyan-400 text-slate-900 px-5 py-2 rounded-lg text-sm disabled:opacity-50 font-bold transition-all shadow-[0_0_15px_rgba(0,217,255,0.3)] hover:shadow-[0_0_20px_rgba(0,217,255,0.5)] active:scale-95"
-               >
-                 {isProcessing ? '...' : 'SEND'}
-               </button>
+           {!manualMode && (
+             <div className="p-4 border-t border-[#25252b] bg-[#0F0F12]">
+               <div className="flex gap-2 relative">
+                 <input
+                   ref={inputRef}
+                   type="text"
+                   value={inputValue}
+                   onChange={(e) => setInputValue(e.target.value)}
+                   onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                   placeholder="Type instructions..."
+                   className="flex-1 bg-[#1C1C21] border border-[#25252b] text-slate-200 rounded-lg p-3 text-sm focus:border-brand-cyan focus:outline-none focus:ring-1 focus:ring-brand-cyan transition-colors"
+                   disabled={isProcessing}
+                 />
+                 <button 
+                  onClick={handleSendMessage}
+                  disabled={isProcessing}
+                  className="bg-brand-cyan hover:bg-cyan-400 text-slate-900 px-5 py-2 rounded-lg text-sm disabled:opacity-50 font-bold transition-all shadow-[0_0_15px_rgba(0,217,255,0.3)] hover:shadow-[0_0_25px_rgba(0,217,255,0.5)]"
+                 >
+                   {isProcessing ? '...' : 'SEND'}
+                 </button>
+               </div>
              </div>
-           </div>
+           )}
         </div>
       </div>
 
@@ -490,6 +631,11 @@ const App: React.FC = () => {
             highlightTarget={activeHighlight}
             onFileUpload={handleFileUpload}
             onNavigate={handleManualNavigation}
+            manualMode={manualMode}
+            onFormFieldChange={handleFormFieldChange}
+            onTransferSubmit={handleManualTransferSubmit}
+            formErrors={formErrors}
+            isSubmittingTransfer={isSubmittingTransfer}
           />
         </div>
       </div>

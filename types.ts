@@ -1,3 +1,4 @@
+
 export enum AgentType {
   MANAGER = 'MANAGER',
   INTERPRETER = 'INTERPRETER',
@@ -32,7 +33,7 @@ export interface Transaction {
 }
 
 export interface DashboardState {
-  currentPage: 'overview' | 'transfer' | 'settings' | 'transactions';
+  currentPage: 'overview' | 'transfer' | 'settings' | 'transactions' | 'reports';
   balance: number;
   transferForm: {
     recipient: string;
@@ -47,6 +48,7 @@ export interface DashboardState {
 export interface AgentAction {
   type: 'NAVIGATE' | 'FILL_INPUT' | 'CLICK' | 'ANALYZE_CHART' | 'EXTRACT_DATA';
   target?: string;
+  page?: string;
   value?: string;
   description: string;
   confidence?: number; // 0-100 score

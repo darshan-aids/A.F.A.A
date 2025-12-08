@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { SYSTEM_INSTRUCTION } from '../constants';
 import { AgentAction, SafetyStatus, DashboardState } from '../types';
@@ -44,7 +45,7 @@ export const processUserRequest = async (
       
       Instructions:
       1. Use the "visible_data" to answer questions accurately.
-      2. If navigating, set target to 'overview', 'transfer', 'settings', or 'transactions'.
+      2. If navigating, set target to one of the available pages: overview, transfer, transactions, reports, etc.
       3. If filling a form, use targets 'recipient', 'amount', 'note'.
       4. If user asks about spending history, NAVIGATE to 'transactions' first.
       5. If the user wants to transfer money, YOU MUST set safety to "REQUIRE_CONFIRMATION".
@@ -69,6 +70,7 @@ export const processUserRequest = async (
         "actions": [
           {
             "type": "NAVIGATE" | "FILL_INPUT" | "CLICK" | "ANALYZE_CHART",
+            "page": "overview" | "transactions" | "transfer" | "reports",
             "target": "field/button/page name",
             "value": "value to fill if applicable",
             "description": "Short description of action",
@@ -100,6 +102,7 @@ export const processUserRequest = async (
                 properties: {
                   type: { type: Type.STRING },
                   target: { type: Type.STRING },
+                  page: { type: Type.STRING },
                   value: { type: Type.STRING },
                   description: { type: Type.STRING },
                   confidence: { type: Type.NUMBER }

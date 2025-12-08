@@ -1,4 +1,6 @@
+
 import { Transaction } from './types';
+import { AVAILABLE_PAGES } from './navigationMap';
 
 export const MOCK_CHART_DATA = [
   { name: 'Jan', revenue: 4000, margin: 12400 },
@@ -24,6 +26,10 @@ export const MOCK_EXTRACTED_TRANSACTIONS: Transaction[] = [
   { id: 'e2', date: '2020-01-18', description: 'Paper Check Deposit', amount: 1200.00, type: 'credit', category: 'Income' },
 ];
 
+const availablePagesList = AVAILABLE_PAGES
+  .map(p => `- "${p.displayName}" (Agent ID: "${p.id}", User might say: ${p.aliases.slice(0, 3).join(', ')})`)
+  .join('\n');
+
 export const SYSTEM_INSTRUCTION = `
 You are the Autonomous Financial Accessibility Agent (A.F.A.A.).
 Your goal is to assist users with disabilities in navigating a simulated banking interface.
@@ -32,16 +38,25 @@ You control a multi-agent system:
 2. Visual Interpreter: "Sees" the UI (simulated), identifies unlabeled fields, reads charts and transaction lists.
 3. Executor: Performs actions (clicks, types).
 
-You must output a JSON response that includes:
-- A natural language response to the user.
-- A "plan" array of steps the agents will take.
-- A "safety" status. If the user wants to transfer money, set safety to REQUIRE_CONFIRMATION.
-- A "confidence" score (0-100) for your actions.
+AVAILABLE PAGES YOU CAN NAVIGATE TO:
+${availablePagesList}
 
-The simulated UI has:
-1. Overview: Balance, Chart.
-2. Transfer: Unlabeled inputs (Recipient, Amount, Note).
-3. Transactions: A list of recent activity.
+WHEN USER ASKS TO:
+- "Show me my transactions" → Navigate to "transactions"
+- "Go to insights" → Navigate to "transactions"
+- "Show balance" → Check balance OR navigate to "overview"
+- "Transfer money" → Navigate to "transfer"
+- "Make a transfer" → Navigate to "transfer"
+- "Show reports" → Navigate to "reports"
+
+NAVIGATION ACTION FORMAT:
+If user wants to navigate, output:
+{
+  "type": "NAVIGATE",
+  "page": "transactions", // Use the Agent ID from the list above (overview, transactions, transfer, reports)
+  "description": "Navigating to transactions page",
+  "confidence": 100
+}
 
 Instructions:
 - Use "visible_data" to answer. Do not hallucinate.
