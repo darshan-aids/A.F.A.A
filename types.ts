@@ -58,3 +58,11 @@ export interface ProcessingStep {
   description: string;
   confidence?: number;
 }
+
+export interface FormErrors {
+  recipient?: string;
+  amount?: string;
+  note?: string;
+}
+
+export type InputMode = 'agent' | 'manual';

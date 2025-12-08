@@ -3,7 +3,7 @@ import { processUserRequest, AgentResponse } from './services/geminiService';
 import { MockFinancialDashboard } from './components/MockFinancialDashboard';
 import { AgentStatusPanel } from './components/AgentStatusPanel';
 import { SafetyModal, TransactionPreview } from './components/SafetyModal';
-import { ChatMessage, DashboardState, AgentType, ProcessingStep, SafetyStatus, AgentAction } from './types';
+import { ChatMessage, DashboardState, AgentType, ProcessingStep, SafetyStatus, AgentAction, FormErrors, InputMode } from './types';
 import { MOCK_TRANSACTIONS } from './constants';
 
 const INITIAL_DASHBOARD_STATE: DashboardState = {
@@ -33,6 +33,7 @@ const App: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [systemStatus, setSystemStatus] = useState<'IDLE' | 'PROCESSING' | 'WAITING_APPROVAL' | 'SAFE_MODE'>('IDLE');
   const [simpleMode, setSimpleMode] = useState(false);
+  const [inputMode, setInputMode] = useState<InputMode>('agent');
   
   // Simulation State
   const [dashboardState, setDashboardState] = useState<DashboardState>(INITIAL_DASHBOARD_STATE);
@@ -44,6 +45,10 @@ const App: React.FC = () => {
   const [pendingAction, setPendingAction] = useState<{ actions: AgentAction[], originalResponse: AgentResponse } | null>(null);
   const [transactionPreview, setTransactionPreview] = useState<TransactionPreview | undefined>(undefined);
   const [showSafetyModal, setShowSafetyModal] = useState(false);
+  
+  // Manual Form State
+  const [formErrors, setFormErrors] = useState<FormErrors>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const liveRegionRef = useRef<HTMLDivElement>(null);
@@ -345,6 +350,106 @@ const App: React.FC = () => {
     setInputValue("Analyze this uploaded document");
   };
 
+  // --- Manual Form Handlers ---
+  const parseAmountValue = (amount: string): number => {
+    return parseFloat(amount.replace(/[^0-9.]/g, ''));
+  };
+
+  const validateForm = (): boolean => {
+    const errors: FormErrors = {};
+    const { recipient, amount } = dashboardState.transferForm;
+
+    if (!recipient.trim()) {
+      errors.recipient = 'Recipient is required';
+    }
+
+    if (!amount.trim()) {
+      errors.amount = 'Amount is required';
+    } else {
+      const numAmount = parseAmountValue(amount);
+      if (isNaN(numAmount) || numAmount <= 0) {
+        errors.amount = 'Please enter a valid amount';
+      } else if (numAmount > dashboardState.balance) {
+        errors.amount = 'Insufficient balance';
+      }
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleFormInputChange = (field: keyof DashboardState['transferForm'], value: string) => {
+    setDashboardState(prev => ({
+      ...prev,
+      transferForm: {
+        ...prev.transferForm,
+        [field]: value
+      }
+    }));
+    
+    // Clear error for this field when user starts typing
+    if (formErrors[field]) {
+      setFormErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      });
+    }
+  };
+
+  const handleManualFormSubmit = async () => {
+    if (!validateForm()) return;
+
+    setIsSubmitting(true);
+    setDashboardState(prev => ({ ...prev, lastTransactionStatus: 'pending' }));
+
+    // Capture values before clearing form
+    const recipient = dashboardState.transferForm.recipient;
+    const amount = parseAmountValue(dashboardState.transferForm.amount);
+
+    // Simulate transaction processing
+    await delay(1500);
+    
+    setDashboardState(prev => ({
+      ...prev,
+      balance: prev.balance - amount,
+      lastTransactionStatus: 'success',
+      transferForm: {
+        recipient: '',
+        amount: '',
+        note: ''
+      }
+    }));
+
+    setIsSubmitting(false);
+    setFormErrors({});
+
+    // Show success message
+    setMessages(prev => [...prev, {
+      id: Date.now().toString(),
+      sender: AgentType.MANAGER,
+      content: `Transfer of $${amount.toFixed(2)} to ${recipient} completed successfully.`,
+      timestamp: new Date()
+    }]);
+  };
+
+  const handleFormClear = () => {
+    setDashboardState(prev => ({
+      ...prev,
+      transferForm: {
+        recipient: '',
+        amount: '',
+        note: ''
+      }
+    }));
+    setFormErrors({});
+  };
+
+  const toggleInputMode = () => {
+    setInputMode(prev => prev === 'agent' ? 'manual' : 'agent');
+    handleFormClear();
+  };
+
   // --- Helpers ---
   const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
@@ -490,6 +595,13 @@ const App: React.FC = () => {
             highlightTarget={activeHighlight}
             onFileUpload={handleFileUpload}
             onNavigate={handleManualNavigation}
+            inputMode={inputMode}
+            formErrors={formErrors}
+            onFormInputChange={handleFormInputChange}
+            onFormSubmit={handleManualFormSubmit}
+            onFormClear={handleFormClear}
+            isSubmitting={isSubmitting}
+            onToggleInputMode={toggleInputMode}
           />
         </div>
       </div>
