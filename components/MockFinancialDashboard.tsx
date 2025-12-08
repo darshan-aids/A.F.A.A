@@ -22,9 +22,9 @@ interface MockFinancialDashboardProps {
 const formatCurrencyInput = (value: string): string => {
   // Allow only numbers and decimal point
   const cleaned = value.replace(/[^0-9.]/g, '');
-  // Prevent multiple decimal points
+  // Prevent multiple decimal points - keep only first decimal
   const parts = cleaned.split('.');
-  return parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : cleaned;
+  return parts.length > 2 ? parts[0] + '.' + parts[1] : cleaned;
 };
 
 export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
@@ -42,6 +42,13 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
   onToggleInputMode
 }) => {
   
+  // Shared keyboard event handler for form inputs
+  const handleInputKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape' && inputMode === 'manual') {
+      onFormClear?.();
+    }
+  };
+
   const renderHighlight = (targetId: string, label: string) => {
     if (highlightTarget && targetId.includes(highlightTarget)) {
       return (
@@ -445,11 +452,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                           value={state.transferForm.recipient}
                           readOnly={inputMode === 'agent'}
                           onChange={(e) => inputMode === 'manual' && onFormInputChange?.('recipient', e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Escape' && inputMode === 'manual') {
-                              onFormClear?.();
-                            }
-                          }}
+                          onKeyDown={handleInputKeyDown}
                           placeholder={inputMode === 'agent' ? 'Agent controlled...' : 'Enter recipient name...'}
                           aria-label="Recipient Name"
                           aria-invalid={!!formErrors?.recipient}
@@ -500,11 +503,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                               onFormInputChange?.('amount', formattedValue);
                             }
                           }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Escape' && inputMode === 'manual') {
-                              onFormClear?.();
-                            }
-                          }}
+                          onKeyDown={handleInputKeyDown}
                           placeholder={inputMode === 'agent' ? 'Agent controlled...' : '0.00'}
                           aria-label="Transfer Amount"
                           aria-invalid={!!formErrors?.amount}
@@ -527,7 +526,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                       </p>
                     )}
                     {!formErrors?.amount && inputMode === 'manual' && state.transferForm.amount && (
-                      <p className="mt-2 text-xs text-slate-500">
+                      <p className="mt-2 text-xs text-slate-500" role="status" aria-label="Available balance information">
                         Available balance: ${state.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
                     )}

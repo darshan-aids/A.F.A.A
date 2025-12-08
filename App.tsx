@@ -351,6 +351,10 @@ const App: React.FC = () => {
   };
 
   // --- Manual Form Handlers ---
+  const parseAmountValue = (amount: string): number => {
+    return parseFloat(amount.replace(/[^0-9.]/g, ''));
+  };
+
   const validateForm = (): boolean => {
     const errors: FormErrors = {};
     const { recipient, amount } = dashboardState.transferForm;
@@ -362,7 +366,7 @@ const App: React.FC = () => {
     if (!amount.trim()) {
       errors.amount = 'Amount is required';
     } else {
-      const numAmount = parseFloat(amount.replace(/[^0-9.]/g, ''));
+      const numAmount = parseAmountValue(amount);
       if (isNaN(numAmount) || numAmount <= 0) {
         errors.amount = 'Please enter a valid amount';
       } else if (numAmount > dashboardState.balance) {
@@ -401,7 +405,7 @@ const App: React.FC = () => {
 
     // Capture values before clearing form
     const recipient = dashboardState.transferForm.recipient;
-    const amount = parseFloat(dashboardState.transferForm.amount.replace(/[^0-9.]/g, ''));
+    const amount = parseAmountValue(dashboardState.transferForm.amount);
 
     // Simulate transaction processing
     await delay(1500);
