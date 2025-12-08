@@ -16,7 +16,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
   const renderHighlight = (targetId: string, label: string) => {
     if (highlightTarget && targetId.includes(highlightTarget)) {
       return (
-        <div className="absolute inset-0 border-2 border-brand-lime bg-brand-lime/10 z-50 animate-pulse rounded-[inherit] pointer-events-none">
+        <div className="absolute inset-0 border-2 border-brand-lime bg-brand-lime/10 z-50 animate-pulse rounded-[inherit] pointer-events-none" aria-hidden="true">
           <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-brand-lime text-black text-[10px] px-3 py-1 rounded-full font-bold uppercase tracking-wider shadow-[0_0_15px_rgba(210,241,89,0.5)]">
             {label}
           </div>
@@ -29,6 +29,8 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
   const NavPill = ({ id, label, active }: { id: string, label: string, active: boolean }) => (
     <button 
       onClick={() => onNavigate?.(id as any)}
+      aria-current={active ? 'page' : undefined}
+      aria-label={`Navigate to ${label}`}
       className={`px-6 py-2.5 rounded-full text-sm font-medium transition-all duration-300 relative ${
         active 
           ? 'bg-brand-lime text-black font-bold shadow-[0_0_20px_rgba(210,241,89,0.2)]' 
@@ -41,11 +43,11 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
   );
 
   return (
-    <div className="w-full h-full bg-brand-dark text-white overflow-y-auto p-6 md:p-10 font-sans selection:bg-brand-lime selection:text-black">
+    <div className="w-full h-full bg-brand-dark text-white overflow-y-auto p-6 md:p-10 font-sans selection:bg-brand-lime selection:text-black" role="main" aria-label="Financial Dashboard">
       
       {/* Simulation Overlay for Vision Agent */}
       {scanning && (
-        <div className="fixed inset-0 z-50 pointer-events-none flex flex-col items-center justify-center">
+        <div className="fixed inset-0 z-50 pointer-events-none flex flex-col items-center justify-center" aria-live="assertive" aria-label="Vision Agent is analyzing the interface">
           <div className="absolute inset-0 bg-brand-purple/10 backdrop-blur-[1px]"></div>
           <div className="w-full h-1 bg-brand-purple/80 shadow-[0_0_30px_rgba(139,92,246,1)] animate-scan fixed top-0 left-0"></div>
           <div className="bg-black/80 text-brand-purple px-4 py-2 rounded-full border border-brand-purple/50 font-mono text-xs backdrop-blur-md">
@@ -55,39 +57,39 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
       )}
 
       {/* Header Section */}
-      <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-6">
-        <div className="flex gap-3 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 scrollbar-hide">
+      <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-6" role="banner">
+        <div className="flex gap-3 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 scrollbar-hide" role="navigation">
           <div className="relative p-1">
              {renderHighlight('nav', 'NAVIGATION')}
              <div className="flex gap-3">
               <NavPill id="overview" label="Overview" active={state.currentPage === 'overview'} />
               <NavPill id="transactions" label="Insights" active={state.currentPage === 'transactions'} />
               <NavPill id="transfer" label="Transfer" active={state.currentPage === 'transfer'} />
-              <button className="px-6 py-2.5 rounded-full text-sm font-medium bg-[#25252b] text-slate-400 hover:text-white">Reports</button>
+              <button className="px-6 py-2.5 rounded-full text-sm font-medium bg-[#25252b] text-slate-400 hover:text-white" aria-label="View Reports">Reports</button>
              </div>
           </div>
         </div>
 
         <div className="flex items-center gap-4">
-          <button className="w-10 h-10 rounded-full border border-slate-700 flex items-center justify-center text-slate-400 hover:text-white hover:border-brand-lime">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <button className="w-10 h-10 rounded-full border border-slate-700 flex items-center justify-center text-slate-400 hover:text-white hover:border-brand-lime" aria-label="Search">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </button>
-          <button className="w-10 h-10 rounded-full border border-slate-700 flex items-center justify-center text-slate-400 hover:text-white hover:border-brand-lime relative">
+          <button className="w-10 h-10 rounded-full border border-slate-700 flex items-center justify-center text-slate-400 hover:text-white hover:border-brand-lime relative" aria-label="Notifications">
              <div className="absolute top-2 right-2.5 w-2 h-2 bg-brand-lime rounded-full border border-brand-dark"></div>
-             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
             </svg>
           </button>
           <div className="w-11 h-11 rounded-full p-[2px] bg-gradient-to-br from-brand-lime to-brand-purple">
-            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Darlene" alt="User" className="w-full h-full rounded-full bg-brand-dark border-2 border-brand-dark" />
+            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Darlene" alt="User Profile" className="w-full h-full rounded-full bg-brand-dark border-2 border-brand-dark" />
           </div>
         </div>
       </div>
 
       {state.currentPage === 'overview' && (
-        <div className="animate-[fadeIn_0.5s_ease-out]">
+        <div className="animate-[fadeIn_0.5s_ease-out]" role="region" aria-label="Overview Dashboard">
           {/* Hero Text */}
           <div className="mb-10">
             <p className="text-slate-400 text-sm mb-1">Welcome back,</p>
@@ -97,7 +99,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
           {/* Stats Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             {/* Dark Card 1 */}
-            <div className="bg-brand-card p-8 rounded-[2.5rem] relative group hover:bg-[#25252b] transition-all duration-300">
+            <div className="bg-brand-card p-8 rounded-[2.5rem] relative group hover:bg-[#25252b] transition-all duration-300" tabIndex={0} aria-label={`Main Account Balance: $${state.balance.toLocaleString()}`}>
               {renderHighlight('balance', 'MAIN_ACCOUNT')}
               <div className="flex justify-between items-start mb-8">
                 <div className="flex items-center gap-3">
@@ -108,21 +110,21 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
                   </div>
                   <span className="text-slate-300 font-medium">Main Account</span>
                 </div>
-                <button className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center transform -rotate-45 hover:rotate-0 transition-transform shadow-lg">
+                <div className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center transform -rotate-45 hover:rotate-0 transition-transform shadow-lg" aria-hidden="true">
                   ➜
-                </button>
+                </div>
               </div>
               <div className="text-4xl font-medium mb-3 tracking-tight">
                  ${state.balance.toLocaleString()}
               </div>
               <div className="text-xs text-brand-mint font-mono font-medium flex items-center gap-1">
-                <span>+42.8%</span>
+                <span aria-label="Up 42.8 percent">+42.8%</span>
                 <span className="text-slate-500">from previous month</span>
               </div>
             </div>
 
             {/* Dark Card 2 */}
-            <div className="bg-brand-card p-8 rounded-[2.5rem] relative group hover:bg-[#25252b] transition-all duration-300">
+            <div className="bg-brand-card p-8 rounded-[2.5rem] relative group hover:bg-[#25252b] transition-all duration-300" tabIndex={0} aria-label="Monthly Spend: 296,241">
               <div className="flex justify-between items-start mb-8">
                 <div className="flex items-center gap-3">
                    <div className="w-10 h-10 rounded-full border border-slate-700 flex items-center justify-center text-slate-300">
@@ -132,19 +134,19 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
                   </div>
                   <span className="text-slate-300 font-medium">Monthly Spend</span>
                 </div>
-                <button className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center transform -rotate-45 hover:rotate-0 transition-transform shadow-lg">
+                <div className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center transform -rotate-45 hover:rotate-0 transition-transform shadow-lg" aria-hidden="true">
                   ➜
-                </button>
+                </div>
               </div>
               <div className="text-4xl font-medium mb-3 tracking-tight">296,241</div>
               <div className="text-xs text-brand-mint font-mono font-medium flex items-center gap-1">
-                <span>+26.3%</span>
+                <span aria-label="Up 26.3 percent">+26.3%</span>
                 <span className="text-slate-500">from previous week</span>
               </div>
             </div>
 
              {/* Lime Card (Highlights) */}
-             <div className="bg-brand-lime p-8 rounded-[2.5rem] text-black relative group shadow-[0_10px_40px_rgba(210,241,89,0.2)]">
+             <div className="bg-brand-lime p-8 rounded-[2.5rem] text-black relative group shadow-[0_10px_40px_rgba(210,241,89,0.2)]" tabIndex={0} aria-label="Company Statistics: 76,314">
               <div className="flex justify-between items-start mb-8">
                 <div className="flex items-center gap-3">
                    <div className="w-10 h-10 rounded-full border border-black/10 flex items-center justify-center">
@@ -154,26 +156,26 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
                   </div>
                   <span className="text-black/70 font-semibold">Company</span>
                 </div>
-                <button className="w-10 h-10 rounded-full bg-black text-brand-lime flex items-center justify-center transform -rotate-45 hover:rotate-0 transition-transform">
+                <div className="w-10 h-10 rounded-full bg-black text-brand-lime flex items-center justify-center transform -rotate-45 hover:rotate-0 transition-transform" aria-hidden="true">
                   ➜
-                </button>
+                </div>
               </div>
               <div className="text-4xl font-bold mb-3 tracking-tight">76,314</div>
               <div className="text-xs text-black/70 font-bold font-mono flex items-center gap-1">
-                <span>-18.4%</span>
+                <span aria-label="Down 18.4 percent">-18.4%</span>
                 <span className="opacity-60">from previous week</span>
               </div>
             </div>
           </div>
 
           {/* Filters Row */}
-          <div className="flex gap-4 mb-6">
+          <div className="flex gap-4 mb-6" role="toolbar" aria-label="Data Filters">
              <button className="px-6 py-2 rounded-full bg-brand-lime text-black font-bold text-sm">All</button>
              <button className="px-6 py-2 rounded-full bg-brand-card text-slate-400 hover:text-white text-sm transition-colors">Engagement</button>
              <button className="px-6 py-2 rounded-full bg-brand-card text-slate-400 hover:text-white text-sm transition-colors">Visit</button>
              <button className="px-6 py-2 rounded-full bg-brand-card text-slate-400 hover:text-white text-sm transition-colors">Post</button>
              <div className="flex-1"></div>
-             <button className="w-10 h-10 rounded-full bg-brand-card text-slate-400 flex items-center justify-center">
+             <button className="w-10 h-10 rounded-full bg-brand-card text-slate-400 flex items-center justify-center" aria-label="Filter settings">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
              </button>
              <button className="px-4 py-2 rounded-full bg-brand-card text-slate-300 text-sm flex items-center gap-2">
@@ -185,7 +187,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 auto-rows-[400px]">
              
              {/* Left: Chart */}
-             <div className="bg-brand-card p-8 rounded-[2.5rem] relative flex flex-col group hover:bg-[#25252b] transition-colors">
+             <div className="bg-brand-card p-8 rounded-[2.5rem] relative flex flex-col group hover:bg-[#25252b] transition-colors" aria-label="Engagement Rate Chart">
                 {renderHighlight('chart', 'ANALYTICS')}
                 <div className="flex justify-between items-center mb-6">
                   <div className="flex items-center gap-3">
@@ -202,7 +204,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
                   </div>
                 </div>
 
-                <div className="flex-1 w-full min-h-0">
+                <div className="flex-1 w-full min-h-0" aria-hidden="true">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={MOCK_CHART_DATA} barSize={24}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#333" />
@@ -249,7 +251,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
              </div>
 
              {/* Middle: Heatmap Grid Placeholder */}
-             <div className="bg-brand-card p-8 rounded-[2.5rem] relative flex flex-col group hover:bg-[#25252b] transition-colors">
+             <div className="bg-brand-card p-8 rounded-[2.5rem] relative flex flex-col group hover:bg-[#25252b] transition-colors" aria-label="Visit Time Heatmap">
                 <div className="flex justify-between items-center mb-6">
                    <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full border border-slate-700 flex items-center justify-center text-slate-300">
@@ -265,7 +267,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
                 </div>
                 
                 {/* Simulated Heatmap Grid */}
-                <div className="flex-1 grid grid-cols-7 gap-2 content-center">
+                <div className="flex-1 grid grid-cols-7 gap-2 content-center" aria-hidden="true">
                    {Array.from({ length: 42 }).map((_, i) => {
                       const opacity = Math.random();
                       const isLime = opacity > 0.7;
@@ -284,7 +286,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
              </div>
 
              {/* Right: Messages/Transactions */}
-             <div className="bg-brand-card p-8 rounded-[2.5rem] relative overflow-hidden flex flex-col group hover:bg-[#25252b] transition-colors">
+             <div className="bg-brand-card p-8 rounded-[2.5rem] relative overflow-hidden flex flex-col group hover:bg-[#25252b] transition-colors" aria-label="Messages">
                 {renderHighlight('transactions', 'MESSAGES')}
                 <div className="flex justify-between items-center mb-6">
                    <div className="flex items-center gap-3">
@@ -295,19 +297,19 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
                       </div>
                       <span className="font-medium text-slate-300">Messages</span>
                    </div>
-                   <button className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-110 transition-transform">+</button>
+                   <button className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center hover:scale-110 transition-transform" aria-label="New Message">+</button>
                 </div>
 
                 <div className="mb-6 relative">
-                   <input type="text" placeholder="Search message" className="w-full bg-[#151518] rounded-full py-4 px-6 text-sm text-slate-300 focus:outline-none border border-transparent focus:border-slate-700 transition-all placeholder:text-slate-600" />
+                   <input type="text" placeholder="Search message" className="w-full bg-[#151518] rounded-full py-4 px-6 text-sm text-slate-300 focus:outline-none border border-transparent focus:border-slate-700 transition-all placeholder:text-slate-600" aria-label="Search messages" />
                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-slate-500 absolute right-4 top-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                    </svg>
                 </div>
 
-                <div className="flex-1 overflow-y-auto space-y-5 pr-1 scrollbar-hide">
+                <div className="flex-1 overflow-y-auto space-y-5 pr-1 scrollbar-hide" role="list">
                    {state.transactions.slice(0, 5).map((tx, idx) => (
-                      <div key={tx.id} className="flex items-center gap-4 p-2 hover:bg-[#1a1a1e] rounded-2xl cursor-pointer transition-colors group">
+                      <div key={tx.id} className="flex items-center gap-4 p-2 hover:bg-[#1a1a1e] rounded-2xl cursor-pointer transition-colors group" role="listitem">
                          <div className="w-12 h-12 rounded-full flex-shrink-0 relative">
                             <img 
                               src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${tx.description}`} 
@@ -334,7 +336,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
       )}
 
       {state.currentPage === 'transfer' && (
-        <div className="flex items-center justify-center h-full animate-[fadeIn_0.5s_ease-out]">
+        <div className="flex items-center justify-center h-full animate-[fadeIn_0.5s_ease-out]" role="region" aria-label="Money Transfer">
            <div className="bg-brand-card p-12 rounded-[3rem] w-full max-w-xl relative shadow-2xl border border-slate-800/50">
               <div className="absolute top-0 right-0 w-64 h-64 bg-brand-lime/5 rounded-full blur-[100px] pointer-events-none"></div>
               
@@ -352,15 +354,16 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
                     {renderHighlight('recipient', 'RECIPIENT')}
                     <label className="block text-xs uppercase tracking-widest text-slate-500 mb-3 font-bold group-hover:text-brand-lime transition-colors">Recipient</label>
                     <div className="flex items-center gap-4 bg-[#151518] p-5 rounded-[1.5rem] border border-transparent group-focus-within:border-brand-lime/50 transition-colors">
-                       <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-slate-400">@</div>
+                       <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-slate-400" aria-hidden="true">@</div>
                        <input 
                           type="text" 
                           value={state.transferForm.recipient}
                           readOnly
                           placeholder="Search people..."
+                          aria-label="Recipient Name"
                           className="bg-transparent w-full focus:outline-none text-white placeholder:text-slate-600 font-medium"
                        />
-                       <button className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400">▼</button>
+                       <button className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400" aria-label="Select Recipient">▼</button>
                     </div>
                  </div>
 
@@ -374,6 +377,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
                           value={state.transferForm.amount}
                           readOnly
                           placeholder="0.00"
+                          aria-label="Transfer Amount"
                           className="bg-transparent w-full focus:outline-none text-white text-2xl font-bold placeholder:text-slate-700"
                        />
                     </div>
@@ -394,7 +398,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
       )}
 
       {state.currentPage === 'transactions' && (
-         <div className="bg-brand-card rounded-[3rem] p-10 h-full relative overflow-hidden animate-[fadeIn_0.5s_ease-out]">
+         <div className="bg-brand-card rounded-[3rem] p-10 h-full relative overflow-hidden animate-[fadeIn_0.5s_ease-out]" role="region" aria-label="Recent Transactions">
             {renderHighlight('transactions', 'HISTORY_GRID')}
             <div className="flex justify-between items-center mb-10">
                <h2 className="text-3xl font-light">Recent <span className="font-bold text-brand-purple">Insights</span></h2>
@@ -402,6 +406,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
                   <button 
                     className="flex items-center gap-2 px-6 py-3 rounded-full bg-brand-lime text-black font-bold hover:bg-[#dfff6b] transition-colors text-sm shadow-lg"
                     onClick={() => document.getElementById('file-upload')?.click()}
+                    aria-label="Upload a bank statement"
                   >
                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
@@ -414,18 +419,19 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
                  type="file" 
                  className="hidden" 
                  onChange={(e) => e.target.files?.[0] && onFileUpload?.(e.target.files[0])} 
+                 aria-hidden="true"
                />
             </div>
             
             <div className="overflow-y-auto h-[calc(100%-6rem)] pr-4">
-               <table className="w-full text-left border-separate border-spacing-y-3">
+               <table className="w-full text-left border-separate border-spacing-y-3" role="table">
                   <thead>
                      <tr className="text-slate-500 text-xs uppercase tracking-wider">
-                        <th className="px-6 py-4 font-bold">Transaction</th>
-                        <th className="px-6 py-4 font-bold">Category</th>
-                        <th className="px-6 py-4 font-bold">Date</th>
-                        <th className="px-6 py-4 text-right font-bold">Amount</th>
-                        <th className="px-6 py-4 text-center font-bold">Status</th>
+                        <th className="px-6 py-4 font-bold" scope="col">Transaction</th>
+                        <th className="px-6 py-4 font-bold" scope="col">Category</th>
+                        <th className="px-6 py-4 font-bold" scope="col">Date</th>
+                        <th className="px-6 py-4 text-right font-bold" scope="col">Amount</th>
+                        <th className="px-6 py-4 text-center font-bold" scope="col">Status</th>
                      </tr>
                   </thead>
                   <tbody>
@@ -453,7 +459,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
                               {tx.type === 'credit' ? '+' : '-'}${tx.amount.toFixed(2)}
                            </td>
                            <td className="px-6 py-5 rounded-r-[1.5rem] text-center">
-                              <div className="w-3 h-3 rounded-full bg-brand-mint mx-auto shadow-[0_0_10px_rgba(0,208,132,0.8)] animate-pulse"></div>
+                              <div className="w-3 h-3 rounded-full bg-brand-mint mx-auto shadow-[0_0_10px_rgba(0,208,132,0.8)] animate-pulse" aria-label="Completed"></div>
                            </td>
                         </tr>
                      ))}
