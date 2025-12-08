@@ -1,6 +1,6 @@
 import React from 'react';
 import { BarChart, Bar, XAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { DashboardState } from '../types';
+import { DashboardState, FormErrors, InputMode } from '../types';
 import { MOCK_CHART_DATA } from '../constants';
 
 interface MockFinancialDashboardProps {
@@ -9,9 +9,29 @@ interface MockFinancialDashboardProps {
   highlightTarget: string | null;
   onFileUpload?: (file: File) => void;
   onNavigate?: (page: DashboardState['currentPage']) => void;
+  inputMode?: InputMode;
+  formErrors?: FormErrors;
+  onFormInputChange?: (field: keyof DashboardState['transferForm'], value: string) => void;
+  onFormSubmit?: () => void;
+  onFormClear?: () => void;
+  isSubmitting?: boolean;
+  onToggleInputMode?: () => void;
 }
 
-export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ state, scanning, highlightTarget, onFileUpload, onNavigate }) => {
+export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
+  state, 
+  scanning, 
+  highlightTarget, 
+  onFileUpload, 
+  onNavigate,
+  inputMode = 'agent',
+  formErrors = {},
+  onFormInputChange,
+  onFormSubmit,
+  onFormClear,
+  isSubmitting = false,
+  onToggleInputMode
+}) => {
   
   const renderHighlight = (targetId: string, label: string) => {
     if (highlightTarget && targetId.includes(highlightTarget)) {
@@ -340,7 +360,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
            <div className="bg-brand-card p-12 rounded-[3rem] w-full max-w-xl relative shadow-2xl border border-slate-800/50">
               <div className="absolute top-0 right-0 w-64 h-64 bg-brand-lime/5 rounded-full blur-[100px] pointer-events-none"></div>
               
-              <div className="flex items-center justify-between mb-10">
+              <div className="flex items-center justify-between mb-6">
                  <h2 className="text-3xl font-light">Quick <span className="text-brand-lime font-bold">Transfer</span></h2>
                  <div className="w-12 h-12 rounded-full bg-[#25252b] flex items-center justify-center">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-brand-lime" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -348,51 +368,229 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
                     </svg>
                  </div>
               </div>
+
+              {/* Mode Toggle */}
+              {onToggleInputMode && (
+                <div className="mb-8 flex items-center justify-between bg-[#151518] p-4 rounded-[1.5rem] border border-slate-700">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-slate-400">Input Mode:</span>
+                    <button
+                      onClick={onToggleInputMode}
+                      className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${
+                        inputMode === 'agent'
+                          ? 'bg-brand-cyan text-black shadow-[0_0_15px_rgba(0,217,255,0.3)]'
+                          : 'bg-[#25252b] text-slate-400'
+                      }`}
+                      aria-pressed={inputMode === 'agent'}
+                    >
+                      Agent
+                    </button>
+                    <button
+                      onClick={onToggleInputMode}
+                      className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${
+                        inputMode === 'manual'
+                          ? 'bg-brand-lime text-black shadow-[0_0_15px_rgba(210,241,89,0.3)]'
+                          : 'bg-[#25252b] text-slate-400'
+                      }`}
+                      aria-pressed={inputMode === 'manual'}
+                    >
+                      Manual
+                    </button>
+                  </div>
+                  {inputMode === 'manual' && (
+                    <span className="text-xs text-brand-lime font-mono">
+                      ⌨️ Keyboard Enabled
+                    </span>
+                  )}
+                </div>
+              )}
               
-              <div className="space-y-8">
+              <form 
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (inputMode === 'manual' && onFormSubmit) {
+                    onFormSubmit();
+                  }
+                }}
+                className="space-y-6"
+              >
                  <div className="group relative" data-target="recipient">
                     {renderHighlight('recipient', 'RECIPIENT')}
-                    <label className="block text-xs uppercase tracking-widest text-slate-500 mb-3 font-bold group-hover:text-brand-lime transition-colors">Recipient</label>
-                    <div className="flex items-center gap-4 bg-[#151518] p-5 rounded-[1.5rem] border border-transparent group-focus-within:border-brand-lime/50 transition-colors">
+                    <label 
+                      htmlFor="recipient-input"
+                      className="block text-xs uppercase tracking-widest text-slate-500 mb-3 font-bold group-hover:text-brand-lime transition-colors"
+                    >
+                      Recipient {inputMode === 'manual' && <span className="text-brand-lime">*</span>}
+                    </label>
+                    <div className={`flex items-center gap-4 bg-[#151518] p-5 rounded-[1.5rem] border transition-all ${
+                      formErrors.recipient 
+                        ? 'border-red-500/50' 
+                        : inputMode === 'manual' 
+                          ? 'border-brand-lime/30 group-focus-within:border-brand-lime/70' 
+                          : 'border-transparent group-focus-within:border-brand-lime/50'
+                    }`}>
                        <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center text-slate-400" aria-hidden="true">@</div>
                        <input 
+                          id="recipient-input"
                           type="text" 
                           value={state.transferForm.recipient}
-                          readOnly
-                          placeholder="Search people..."
+                          readOnly={inputMode === 'agent'}
+                          onChange={(e) => inputMode === 'manual' && onFormInputChange?.('recipient', e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Escape' && inputMode === 'manual') {
+                              onFormClear?.();
+                            }
+                          }}
+                          placeholder={inputMode === 'agent' ? 'Agent controlled...' : 'Enter recipient name...'}
                           aria-label="Recipient Name"
-                          className="bg-transparent w-full focus:outline-none text-white placeholder:text-slate-600 font-medium"
+                          aria-invalid={!!formErrors.recipient}
+                          aria-describedby={formErrors.recipient ? 'recipient-error' : undefined}
+                          className={`bg-transparent w-full focus:outline-none text-white placeholder:text-slate-600 font-medium ${
+                            inputMode === 'manual' ? 'cursor-text' : 'cursor-not-allowed'
+                          }`}
+                          tabIndex={inputMode === 'manual' ? 0 : -1}
                        />
-                       <button className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400" aria-label="Select Recipient">▼</button>
+                       {inputMode === 'agent' && (
+                         <span className="text-[10px] text-slate-500 font-mono bg-[#25252b] px-2 py-1 rounded">READ-ONLY</span>
+                       )}
                     </div>
+                    {formErrors.recipient && (
+                      <p id="recipient-error" className="mt-2 text-xs text-red-400 flex items-center gap-1" role="alert">
+                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                        {formErrors.recipient}
+                      </p>
+                    )}
                  </div>
 
                  <div className="group relative" data-target="amount">
                     {renderHighlight('amount', 'AMOUNT')}
-                    <label className="block text-xs uppercase tracking-widest text-slate-500 mb-3 font-bold group-hover:text-brand-lime transition-colors">Amount</label>
-                    <div className="flex items-center gap-4 bg-[#151518] p-5 rounded-[1.5rem] border border-transparent group-focus-within:border-brand-lime/50 transition-colors">
+                    <label 
+                      htmlFor="amount-input"
+                      className="block text-xs uppercase tracking-widest text-slate-500 mb-3 font-bold group-hover:text-brand-lime transition-colors"
+                    >
+                      Amount {inputMode === 'manual' && <span className="text-brand-lime">*</span>}
+                    </label>
+                    <div className={`flex items-center gap-4 bg-[#151518] p-5 rounded-[1.5rem] border transition-all ${
+                      formErrors.amount 
+                        ? 'border-red-500/50' 
+                        : inputMode === 'manual' 
+                          ? 'border-brand-lime/30 group-focus-within:border-brand-lime/70' 
+                          : 'border-transparent group-focus-within:border-brand-lime/50'
+                    }`}>
                        <span className="text-brand-lime font-bold text-2xl">$</span>
                        <input 
+                          id="amount-input"
                           type="text" 
                           value={state.transferForm.amount}
-                          readOnly
-                          placeholder="0.00"
+                          readOnly={inputMode === 'agent'}
+                          onChange={(e) => {
+                            if (inputMode === 'manual') {
+                              // Allow only numbers and decimal point
+                              const value = e.target.value.replace(/[^0-9.]/g, '');
+                              // Prevent multiple decimal points
+                              const parts = value.split('.');
+                              const formattedValue = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : value;
+                              onFormInputChange?.('amount', formattedValue);
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Escape' && inputMode === 'manual') {
+                              onFormClear?.();
+                            }
+                          }}
+                          placeholder={inputMode === 'agent' ? 'Agent controlled...' : '0.00'}
                           aria-label="Transfer Amount"
-                          className="bg-transparent w-full focus:outline-none text-white text-2xl font-bold placeholder:text-slate-700"
+                          aria-invalid={!!formErrors.amount}
+                          aria-describedby={formErrors.amount ? 'amount-error' : undefined}
+                          className={`bg-transparent w-full focus:outline-none text-white text-2xl font-bold placeholder:text-slate-700 ${
+                            inputMode === 'manual' ? 'cursor-text' : 'cursor-not-allowed'
+                          }`}
+                          tabIndex={inputMode === 'manual' ? 0 : -1}
                        />
+                       {inputMode === 'agent' && (
+                         <span className="text-[10px] text-slate-500 font-mono bg-[#25252b] px-2 py-1 rounded">READ-ONLY</span>
+                       )}
                     </div>
+                    {formErrors.amount && (
+                      <p id="amount-error" className="mt-2 text-xs text-red-400 flex items-center gap-1" role="alert">
+                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                        {formErrors.amount}
+                      </p>
+                    )}
+                    {!formErrors.amount && inputMode === 'manual' && state.transferForm.amount && (
+                      <p className="mt-2 text-xs text-slate-500">
+                        Available balance: ${state.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                    )}
                  </div>
 
-                 <div className="pt-6 relative" data-target="submit">
+                 <div className="pt-6 relative space-y-3" data-target="submit">
                     {renderHighlight('submit', 'EXECUTE')}
-                    <button className="w-full bg-brand-lime text-black py-5 rounded-[1.5rem] font-bold text-lg hover:bg-[#dfff6b] transition-all hover:scale-[1.02] shadow-[0_0_30px_rgba(210,241,89,0.3)] flex items-center justify-center gap-2">
-                       <span>Send Money Now</span>
-                       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                       </svg>
+                    <button 
+                      type="submit"
+                      disabled={inputMode === 'agent' || isSubmitting}
+                      className={`w-full py-5 rounded-[1.5rem] font-bold text-lg transition-all flex items-center justify-center gap-2 ${
+                        inputMode === 'agent'
+                          ? 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                          : isSubmitting
+                            ? 'bg-brand-lime/50 text-black/50 cursor-wait'
+                            : 'bg-brand-lime text-black hover:bg-[#dfff6b] hover:scale-[1.02] shadow-[0_0_30px_rgba(210,241,89,0.3)]'
+                      }`}
+                      aria-busy={isSubmitting}
+                    >
+                       {isSubmitting ? (
+                         <>
+                           <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                           </svg>
+                           <span>Processing...</span>
+                         </>
+                       ) : (
+                         <>
+                           <span>{inputMode === 'agent' ? 'Agent Mode Active' : 'Send Money Now'}</span>
+                           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                           </svg>
+                         </>
+                       )}
                     </button>
+                    {inputMode === 'manual' && (
+                      <button
+                        type="button"
+                        onClick={onFormClear}
+                        disabled={isSubmitting}
+                        className="w-full py-3 rounded-[1.5rem] font-medium text-sm transition-all bg-[#25252b] text-slate-400 hover:bg-[#2F2F36] hover:text-white disabled:opacity-50"
+                      >
+                        Clear Form (Esc)
+                      </button>
+                    )}
+                    {inputMode === 'manual' && (
+                      <p className="text-xs text-center text-slate-500 pt-2">
+                        Press <kbd className="px-2 py-1 bg-[#25252b] rounded text-brand-lime font-mono">Enter</kbd> to submit or <kbd className="px-2 py-1 bg-[#25252b] rounded text-brand-lime font-mono">Esc</kbd> to clear
+                      </p>
+                    )}
                  </div>
-              </div>
+              </form>
+
+              {/* Transaction Status Feedback */}
+              {state.lastTransactionStatus === 'success' && inputMode === 'manual' && (
+                <div className="mt-6 p-4 bg-brand-mint/10 border border-brand-mint/30 rounded-[1.5rem] flex items-center gap-3 animate-[fadeIn_0.3s_ease-out]" role="status">
+                  <div className="w-8 h-8 rounded-full bg-brand-mint flex items-center justify-center">
+                    <svg className="w-5 h-5 text-black" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="font-bold text-brand-mint">Transfer Successful!</p>
+                    <p className="text-xs text-slate-400">Your money has been sent.</p>
+                  </div>
+                </div>
+              )}
            </div>
         </div>
       )}
