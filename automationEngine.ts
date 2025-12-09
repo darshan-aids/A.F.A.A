@@ -12,7 +12,8 @@ export type ActionType =
   | 'WAIT'
   | 'VERIFY'
   | 'HOVER'
-  | 'GET_ELEMENT_VALUE';
+  | 'GET_ELEMENT_VALUE'
+  | 'WAIT_FOR_SELECTOR';
 
 export interface AutomationAction {
   type: ActionType;
@@ -74,6 +75,7 @@ export class BrowserAutomationEngine {
         case 'VERIFY': return await this.verify(action);
         case 'HOVER': return await this.hover(action);
         case 'GET_ELEMENT_VALUE': return await this.getElementValue(action);
+        case 'WAIT_FOR_SELECTOR': return await this.waitForSelector(action);
         default: return { type: action.type, success: false, timestamp, message: `Unknown action: ${action.type}` };
       }
     } catch (error) {
@@ -217,6 +219,21 @@ export class BrowserAutomationEngine {
       message: 'Value retrieved', 
       data: value 
     };
+  }
+
+  private async waitForSelector(action: AutomationAction): Promise<ActionResult> {
+    const timeout = action.duration || 5000;
+    const start = Date.now();
+    
+    while (Date.now() - start < timeout) {
+      const el = this.findElement(action);
+      if (el) {
+         return { type: 'WAIT_FOR_SELECTOR', success: true, timestamp: new Date().toISOString(), message: 'Element appeared' };
+      }
+      await new Promise(r => setTimeout(r, 200));
+    }
+    
+    return { type: 'WAIT_FOR_SELECTOR', success: false, timestamp: new Date().toISOString(), message: 'Timeout waiting for element' };
   }
 
   // --- Helpers ---

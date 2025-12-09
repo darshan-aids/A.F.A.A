@@ -1,8 +1,8 @@
 
 import { v4 as uuidv4 } from "uuid";
 import { SubAgent as Agent, AgentMessage, AgentAction } from "../types";
-import { fetchPageText } from "./browserAgent";
 import { GoogleGenAI } from "@google/genai";
+import { BrowserAutomationEngine, AutomationAction } from "../automationEngine";
 
 // Initialize Gemini client for client-side execution
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -12,6 +12,7 @@ type Subscriber = { unsubscribe: () => void };
 export class AgentManager {
   private agents: Record<string, Agent> = {};
   private subs: ((agents: Agent[]) => void)[] = [];
+  private engine: BrowserAutomationEngine | null = null;
 
   constructor() {
     // load from localStorage
@@ -22,6 +23,10 @@ export class AgentManager {
         parsed.forEach((a) => (this.agents[a.id] = a));
       } catch {}
     }
+  }
+
+  public setAutomationEngine(engine: BrowserAutomationEngine) {
+    this.engine = engine;
   }
 
   subscribe(cb: (agents: Agent[]) => void): Subscriber {
@@ -74,20 +79,12 @@ export class AgentManager {
     this.runAgentStep(agentId);
   }
 
-  async enqueueAction(agentId: string, action: AgentAction) {
-    const agent = this.agents[agentId];
-    if (!agent) throw new Error("agent not found");
-    // for now, immediate run
-    await this.handleAction(agentId, action);
-    this.notify();
-  }
-
   private async runAgentStep(agentId: string) {
     const agent = this.agents[agentId];
     if (!agent) return;
     
-    // Construct Prompt for Gemini
-    const prompt = `You are an autonomous sub-agent named "${agent.name}".
+    // Construct Prompt for Gemini to return structured JSON Actions
+    const prompt = `You are an autonomous browser agent named "${agent.name}".
     
     GOALS:
     ${agent.goals.map(g => `- ${g}`).join('\n')}
@@ -95,72 +92,80 @@ export class AgentManager {
     CONVERSATION HISTORY:
     ${(agent.messages || []).map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n")}
 
+    AVAILABLE ACTIONS (JSON):
+    - { "type": "NAVIGATE", "page": "overview|transactions|transfer" }
+    - { "type": "CLICK", "selector": "css_selector" }
+    - { "type": "FILL_INPUT", "selector": "css_selector", "value": "text" }
+    - { "type": "READ_PAGE" }
+    - { "type": "SCREENSHOT" }
+    - { "type": "WAIT_FOR_SELECTOR", "selector": "css_selector", "duration": 5000 }
+    - { "type": "SCROLL", "direction": "down", "amount": 300 }
+
     INSTRUCTIONS:
-    - Analyze the user request and history.
-    - Make a single step decision.
-    - If you need to browse the web to find information, output exactly: "BROWSE: <url>"
-    - If you have an answer or need to ask a clarifying question, just output the text.
-    - Keep responses concise.
+    - Return a JSON object with an "actions" array and a "summary" string.
+    - Do NOT output markdown or code blocks. Just raw JSON.
+    - If you are done, return empty actions.
+    
+    Example Response:
+    {
+      "summary": "I will navigate to transactions and search for 'Uber'.",
+      "actions": [
+        { "type": "NAVIGATE", "page": "transactions" },
+        { "type": "WAIT_FOR_SELECTOR", "selector": "input[placeholder*='Search']" },
+        { "type": "FILL_INPUT", "selector": "input[placeholder*='Search']", "value": "Uber" }
+      ]
+    }
     `;
 
     this.appendAgentMessage(agentId, "agent", "Thinking...");
     
     try {
-      // Use Gemini Directly instead of backend proxy
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: prompt
       });
       
-      const text = response.text || "I'm having trouble thinking right now.";
-
-      // If Agent suggests browsing
-      if (text.trim().toUpperCase().startsWith("BROWSE:")) {
-        const url = text.replace(/^BROWSE:\s*/i, "").trim();
-        // Remove the "Thinking..." message
-        this.popLastAgentMessage(agentId);
-        
-        this.appendAgentMessage(agentId, "agent", `I need to browse: ${url}`);
-        await this.enqueueAction(agentId, { type: "browse", payload: { url } } as AgentAction);
-      } else {
-        this.replaceLastAgentMessage(agentId, text);
+      const rawText = response.text || "{}";
+      // Clean up potential markdown blocks
+      const jsonStr = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+      
+      let parsed;
+      try {
+        parsed = JSON.parse(jsonStr);
+      } catch (e) {
+        // Fallback if parsing fails - just treat as text response
+        this.replaceLastAgentMessage(agentId, rawText);
+        return;
       }
+
+      const { summary, actions } = parsed;
+
+      // Update the "Thinking..." message with the summary
+      this.replaceLastAgentMessage(agentId, summary || "Executing actions...");
+
+      // Execute actions if engine is available
+      if (actions && actions.length > 0 && this.engine) {
+        const report = await this.engine.executeActions(actions as AutomationAction[]);
+        
+        // Log results
+        const resultSummary = report.results.map(r => 
+          `[${r.type}] ${r.success ? '✅' : '❌'} ${r.message} ${r.data ? JSON.stringify(r.data) : ''}`
+        ).join('\n');
+
+        this.appendAgentMessage(agentId, "system", `Execution Report:\n${resultSummary}`);
+
+        // Handle screenshots specifically
+        const screenshots = report.results.filter(r => r.screenshot).map(r => r.screenshot);
+        if (screenshots.length > 0) {
+           // We could attach this to the system message meta
+           agent.messages[agent.messages.length - 1].meta = { screenshots };
+        }
+      }
+
     } catch (err) {
       this.replaceLastAgentMessage(agentId, `Error: ${(err as Error).message}`);
     }
     this.notify();
-  }
-
-  private async handleAction(agentId: string, action: AgentAction) {
-    if (action.type === "browse") {
-      const url = action.payload?.url;
-      if (!url) return;
-      
-      try {
-        const data = await fetchPageText(url);
-        const text = data?.text || "";
-        
-        this.appendAgentMessage(agentId, "system", `Fetched content from ${url}:\n\n${text.substring(0, 500)}...`, { url });
-        
-        // Follow up with analysis
-        const prompt = `I have fetched content from ${url}. 
-        CONTENT START:
-        ${text.substring(0, 2000)}
-        CONTENT END.
-        
-        Please summarize this for the user based on my goals.`;
-        
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: prompt
-        });
-        
-        this.appendAgentMessage(agentId, "agent", response.text || "I read the page but couldn't summarize it.");
-        
-      } catch (e) {
-        this.appendAgentMessage(agentId, "system", `Failed to browse ${url}: ${String(e)}`);
-      }
-    }
   }
 
   private appendAgentMessage(agentId: string, role: AgentMessage["role"], content: string, meta?: any) {
@@ -168,13 +173,6 @@ export class AgentManager {
     if (!agent) return;
     const msg: AgentMessage = { role, content, meta, timestamp: new Date().toISOString() };
     agent.messages = [...(agent.messages || []), msg];
-    this.notify();
-  }
-
-  private popLastAgentMessage(agentId: string) {
-    const agent = this.agents[agentId];
-    if (!agent || !agent.messages.length) return;
-    agent.messages.pop();
     this.notify();
   }
 

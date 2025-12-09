@@ -61,6 +61,13 @@ const App: React.FC = () => {
   // Agent Mode Manager
   const agentManager = useMemo(() => new AgentManager(), []);
 
+  // Connect engine to manager
+  useEffect(() => {
+    if (automationEngine.current) {
+      agentManager.setAutomationEngine(automationEngine.current);
+    }
+  }, [agentManager]);
+
   // --- Effects ---
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -204,7 +211,7 @@ const App: React.FC = () => {
       if (action.target) setActiveHighlight(action.target.toLowerCase());
 
       // Delegate pure automation actions to the Engine
-      const automationActions = ['SCREENSHOT', 'READ_PAGE', 'SCROLL', 'WAIT', 'VERIFY', 'HOVER', 'GET_ELEMENT_VALUE'];
+      const automationActions = ['SCREENSHOT', 'READ_PAGE', 'SCROLL', 'WAIT', 'VERIFY', 'HOVER', 'GET_ELEMENT_VALUE', 'WAIT_FOR_SELECTOR'];
       
       if (automationActions.includes(action.type)) {
         addStep(AgentType.INTERPRETER, 'processing', `Executing ${action.type}...`, confidence);
