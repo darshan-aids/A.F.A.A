@@ -3,6 +3,8 @@ import React, { useRef, useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { DashboardState } from '../types';
 import { MOCK_CHART_DATA } from '../constants';
+import { AgentMode } from './AgentMode';
+import { AgentManager } from '../services/agent';
 
 interface FormErrors {
   recipient?: string;
@@ -20,6 +22,7 @@ interface MockFinancialDashboardProps {
   onTransferSubmit?: () => void;
   formErrors?: FormErrors;
   isSubmittingTransfer?: boolean;
+  agentManager?: AgentManager; // New prop
 }
 
 export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
@@ -32,7 +35,8 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
   onFormFieldChange,
   onTransferSubmit,
   formErrors = {} as FormErrors,
-  isSubmittingTransfer = false
+  isSubmittingTransfer = false,
+  agentManager
 }) => {
   
   const recipientInputRef = useRef<HTMLInputElement>(null);
@@ -110,6 +114,21 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
     }
   }, [manualMode, state.currentPage]);
 
+  // If in Agent Mode, render the Agent Interface
+  if (state.currentPage === 'agent-mode' && agentManager) {
+    return (
+      <div className="w-full h-full relative" role="main" aria-label="Agent Mode Interface">
+        {/* Navigation Bar Overlay */}
+        <div className="absolute top-4 left-4 z-50">
+           <div className="bg-[#1C1C21]/90 backdrop-blur p-1 rounded-full border border-[#25252b] shadow-xl flex gap-1">
+              <NavPill id="overview" label="← Exit Agent Mode" active={false} />
+           </div>
+        </div>
+        <AgentMode agentManager={agentManager} />
+      </div>
+    );
+  }
+
   return (
     <div className="w-full h-full bg-brand-dark text-white overflow-y-auto p-4 md:p-6 lg:p-10 font-sans selection:bg-brand-lime selection:text-black" role="main" aria-label="Financial Dashboard">
       
@@ -135,6 +154,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
               <NavPill id="transactions" label="Insights" active={state.currentPage === 'transactions'} />
               <NavPill id="transfer" label="Transfer" active={state.currentPage === 'transfer'} />
               <NavPill id="reports" label="Reports" active={state.currentPage === 'reports'} />
+              <NavPill id="agent-mode" label="Agents" active={state.currentPage === 'agent-mode'} />
              </div>
           </div>
         </div>
@@ -339,7 +359,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                 </div>
 
                 <div className="flex-1 w-full min-h-0" aria-hidden="true">
-                  {!isChartsLoaded ? (
+                  {! isChartsLoaded ? (
                     <div className="flex items-center justify-center h-full">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-lime"></div>
                     </div>
@@ -425,7 +445,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                 {/* Enhanced Heatmap Grid */}
                 <div className="flex-1 flex flex-col justify-center">
                   <div className="grid grid-cols-7 gap-1 md:gap-2 mb-3 md:mb-4" aria-hidden="true">
-                     {Array.from({ length: 42 }).map((_, i) => {
+                     {Array.from({ length: 42 }). map((_, i) => {
                         const opacity = Math.random();
                         const isHighValue = opacity > 0.7;
                         const isMediumValue = opacity > 0.4 && opacity <= 0.7;

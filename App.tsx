@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { processUserRequest, AgentResponse } from './services/geminiService';
 import { MockFinancialDashboard } from './components/MockFinancialDashboard';
 import { AgentStatusPanel } from './components/AgentStatusPanel';
@@ -7,6 +7,8 @@ import { SafetyModal, TransactionPreview } from './components/SafetyModal';
 import { ChatMessage, DashboardState, AgentType, ProcessingStep, SafetyStatus, AgentAction } from './types';
 import { MOCK_TRANSACTIONS } from './constants';
 import { detectNavigationTarget, AVAILABLE_PAGES } from './navigationMap';
+import { BrowserAutomationEngine } from './automationEngine';
+import { AgentManager } from './services/agent';
 
 const INITIAL_DASHBOARD_STATE: DashboardState = {
   currentPage: 'overview',
@@ -27,7 +29,7 @@ const App: React.FC = () => {
     {
       id: 'welcome',
       sender: AgentType.MANAGER,
-      content: "A.F.A.A. Online. I am connected to Darlene's interface. I can see unlabeled forms and complex charts. Try 'Check my insights' or use Ctrl+T to transfer.",
+      content: "A.F.A.A. Online with Browser Automation. I can see the screen, click elements, and navigate for you.",
       timestamp: new Date()
     }
   ]);
@@ -36,18 +38,15 @@ const App: React.FC = () => {
   const [systemStatus, setSystemStatus] = useState<'IDLE' | 'PROCESSING' | 'WAITING_APPROVAL' | 'SAFE_MODE'>('IDLE');
   const [simpleMode, setSimpleMode] = useState(false);
   
-  // NEW: Manual mode state
   const [manualMode, setManualMode] = useState(false);
   const [formErrors, setFormErrors] = useState<{recipient?: string; amount?: string}>({});
   const [isSubmittingTransfer, setIsSubmittingTransfer] = useState(false);
   
-  // Simulation State
   const [dashboardState, setDashboardState] = useState<DashboardState>(INITIAL_DASHBOARD_STATE);
   const [agentSteps, setAgentSteps] = useState<ProcessingStep[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [activeHighlight, setActiveHighlight] = useState<string | null>(null);
   
-  // Safety State
   const [pendingAction, setPendingAction] = useState<{ actions: AgentAction[], originalResponse: AgentResponse } | null>(null);
   const [transactionPreview, setTransactionPreview] = useState<TransactionPreview | undefined>(undefined);
   const [showSafetyModal, setShowSafetyModal] = useState(false);
@@ -55,196 +54,119 @@ const App: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const liveRegionRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  
+  // Automation Engine
+  const automationEngine = useRef(new BrowserAutomationEngine());
+
+  // Agent Mode Manager
+  const agentManager = useMemo(() => new AgentManager(), []);
 
   // --- Effects ---
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, agentSteps]);
 
+  // Handle Automation Navigation Events
+  useEffect(() => {
+    const handleAgentNavigate = (e: CustomEvent) => {
+      const pageId = e.detail.page;
+      const targetPage = AVAILABLE_PAGES.find(p => p.id === pageId || p.name === pageId || p.aliases.includes(pageId));
+      
+      if (targetPage) {
+        setDashboardState(prev => ({
+          ...prev,
+          currentPage: targetPage.id as DashboardState['currentPage']
+        }));
+        console.log(`[App] Agent triggered navigation to ${targetPage.displayName}`);
+      }
+    };
+
+    window.addEventListener('agent-navigate', handleAgentNavigate as EventListener);
+    return () => window.removeEventListener('agent-navigate', handleAgentNavigate as EventListener);
+  }, []);
+
   // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+T: Transfer shortcut
       if ((e.ctrlKey || e.metaKey) && e.key === 't') {
         e.preventDefault();
-        if (manualMode) {
-          setDashboardState(prev => ({ ...prev, currentPage: 'transfer' }));
-        } else {
-          setInputValue("I want to make a transfer");
-          inputRef.current?.focus();
-        }
+        manualMode ? setDashboardState(prev => ({ ...prev, currentPage: 'transfer' })) : setInputValue("I want to make a transfer");
       }
-      // Ctrl+B: Balance shortcut
-      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
         e.preventDefault();
-        setInputValue("Check my balance");
-        inputRef.current?.focus();
+        setInputValue("Go to dashboard");
       }
-      // Ctrl+H: History/Transactions shortcut
-      if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
-        e.preventDefault();
-        setInputValue("Show my insights history");
-        inputRef.current?.focus();
-      }
-      // Ctrl+M: Toggle manual mode
       if ((e.ctrlKey || e.metaKey) && e.key === 'm') {
         e.preventDefault();
         setManualMode(!manualMode);
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [manualMode]);
 
-  // --- Form Validation ---
+  // --- Form Handlers ---
   const validateForm = () => {
     const errors: {recipient?: string; amount?: string} = {};
-    
-    if (!dashboardState.transferForm.recipient.trim()) {
-      errors.recipient = 'Recipient is required';
-    } else if (!dashboardState.transferForm.recipient.includes('@') && !dashboardState.transferForm.recipient.match(/^[a-zA-Z\s]+$/)) {
-      errors.recipient = 'Enter a valid name or email';
-    }
-    
+    if (!dashboardState.transferForm.recipient.trim()) errors.recipient = 'Required';
     const amount = parseFloat(dashboardState.transferForm.amount.replace(/[^0-9.]/g, ''));
-    if (!dashboardState.transferForm.amount.trim()) {
-      errors.amount = 'Amount is required';
-    } else if (isNaN(amount) || amount <= 0) {
-      errors.amount = 'Enter a valid amount';
-    } else if (amount > dashboardState.balance) {
-      errors.amount = 'Insufficient balance';
-    }
-    
+    if (!dashboardState.transferForm.amount.trim() || isNaN(amount)) errors.amount = 'Invalid amount';
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
-  // --- Form Handlers ---
   const handleFormFieldChange = (field: 'recipient' | 'amount' | 'note', value: string) => {
-    // Format amount field
     if (field === 'amount') {
-      // Remove non-numeric characters except decimal point
-      const numericValue = value.replace(/[^0-9.]/g, '');
-      // Ensure only one decimal point
-      const parts = numericValue.split('.');
-      if (parts.length > 2) {
-        value = parts[0] + '.' + parts.slice(1).join('');
-      } else {
-        value = numericValue;
-      }
+      const numeric = value.replace(/[^0-9.]/g, '');
+      const parts = numeric.split('.');
+      value = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : numeric;
     }
-    
-    setDashboardState(prev => ({
-      ...prev,
-      transferForm: {
-        ...prev.transferForm,
-        [field]: value
-      }
-    }));
-    
-    // Clear specific field error when user starts typing
-    if (formErrors[field as keyof typeof formErrors]) {
-      setFormErrors(prev => ({
-        ...prev,
-        [field]: undefined
-      }));
-    }
+    setDashboardState(prev => ({ ...prev, transferForm: { ...prev.transferForm, [field]: value } }));
+    if (formErrors[field as keyof typeof formErrors]) setFormErrors(prev => ({ ...prev, [field]: undefined }));
   };
 
   const handleManualTransferSubmit = async () => {
     if (!validateForm()) return;
-    
     setIsSubmittingTransfer(true);
-    
-    try {
-      // Simulate transfer processing
-      await delay(2000);
-      
-      const amount = parseFloat(dashboardState.transferForm.amount);
-      
-      // Update balance and add transaction
-      setDashboardState(prev => ({
-        ...prev,
-        balance: prev.balance - amount,
-        lastTransactionStatus: 'success',
-        transferForm: { recipient: '', amount: '', note: '' },
-        transactions: [
-          {
-            id: Date.now().toString(),
-            description: prev.transferForm.recipient,
-            amount: amount,
-            date: new Date().toLocaleDateString(),
-            type: 'debit',
-            category: 'Transfer'
-          },
-          ...prev.transactions
-        ]
-      }));
-      
-      // Show success message
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        sender: AgentType.MANAGER,
-        content: `Transfer of $${amount.toFixed(2)} to ${dashboardState.transferForm.recipient} completed successfully.`,
-        timestamp: new Date()
-      }]);
-      
-    } catch (error) {
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        sender: AgentType.MANAGER,
-        content: "Transfer failed. Please try again.",
-        timestamp: new Date()
-      }]);
-    } finally {
-      setIsSubmittingTransfer(false);
-    }
+    await delay(2000);
+    const amount = parseFloat(dashboardState.transferForm.amount);
+    setDashboardState(prev => ({
+      ...prev,
+      balance: prev.balance - amount,
+      lastTransactionStatus: 'success',
+      transferForm: { recipient: '', amount: '', note: '' },
+      transactions: [{ id: Date.now().toString(), description: prev.transferForm.recipient, amount, date: new Date().toLocaleDateString(), type: 'debit', category: 'Transfer' }, ...prev.transactions]
+    }));
+    setMessages(prev => [...prev, { id: Date.now().toString(), sender: AgentType.MANAGER, content: "Transfer completed successfully.", timestamp: new Date() }]);
+    setIsSubmittingTransfer(false);
   };
 
-  // --- Handlers ---
   const handleManualNavigation = (page: DashboardState['currentPage']) => {
     setDashboardState(prev => ({ ...prev, currentPage: page }));
   };
 
+  const handleFileUpload = (file: File) => {
+    setDashboardState(prev => ({ ...prev, uploadedFile: file }));
+    setInputValue("Analyze this uploaded document");
+  };
+
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isProcessing) return;
-
-    const userMsg: ChatMessage = {
-      id: Date.now().toString(),
-      sender: AgentType.USER,
-      content: inputValue,
-      timestamp: new Date()
-    };
-
+    const userMsg: ChatMessage = { id: Date.now().toString(), sender: AgentType.USER, content: inputValue, timestamp: new Date() };
     setMessages(prev => [...prev, userMsg]);
     setInputValue('');
     setIsProcessing(true);
     setSystemStatus('PROCESSING');
     setAgentSteps([]);
 
-    // 1. Manager Plans
     addStep(AgentType.MANAGER, 'processing', 'Analyzing user request...');
     
     try {
       const response = await processUserRequest(userMsg.content, dashboardState, { simpleMode });
-      
       updateLastStepStatus('completed');
-      
-      // 2. Display Thought Process
-      if (Array.isArray(response.thoughtProcess) && response.thoughtProcess.length > 0) {
-        for (const thought of response.thoughtProcess) {
-           addStep(AgentType.MANAGER, 'completed', thought);
-           await delay(400);
-        }
-      }
 
-      // 3. Safety Check
       if (response.safety === SafetyStatus.REQUIRE_CONFIRMATION) {
-        const details = extractTransactionDetails(response.actions, dashboardState);
-        setTransactionPreview(details);
-
-        addStep(AgentType.MANAGER, 'waiting_approval', 'Consequential action detected. Pausing for authorization.', 99);
+        setTransactionPreview(extractTransactionDetails(response.actions, dashboardState));
         setSystemStatus('WAITING_APPROVAL');
         setPendingAction({ actions: response.actions, originalResponse: response });
         setShowSafetyModal(true);
@@ -252,29 +174,17 @@ const App: React.FC = () => {
         return;
       }
 
-      // 4. Execute Actions
       await executeActionSequence(response.actions);
 
-      // 5. Final Response
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         sender: AgentType.MANAGER,
         content: response.message,
         timestamp: new Date()
       }]);
-      
-      if (liveRegionRef.current) {
-        liveRegionRef.current.innerText = response.message;
-      }
-
     } catch (err) {
       console.error(err);
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        sender: AgentType.MANAGER,
-        content: "I encountered an error coordinating the agents. Please try again.",
-        timestamp: new Date()
-      }]);
+      setMessages(prev => [...prev, { id: Date.now().toString(), sender: AgentType.MANAGER, content: "Error coordinating agents.", timestamp: new Date() }]);
     } finally {
       if (!showSafetyModal) {
         setIsProcessing(false);
@@ -285,152 +195,131 @@ const App: React.FC = () => {
     }
   };
 
-  const extractTransactionDetails = (actions: AgentAction[], currentState: DashboardState): TransactionPreview => {
-    let amount = '0';
-    let to = 'Unknown';
-    let note = '';
-
-    actions.forEach(action => {
-      if (action.type === 'FILL_INPUT' && action.target && action.value) {
-        if (action.target.includes('amount')) amount = action.value;
-        if (action.target.includes('recipient')) to = action.value;
-        if (action.target.includes('note')) note = action.value;
-      }
-    });
-
-    if (amount === '0' && currentState.transferForm.amount) amount = currentState.transferForm.amount;
-    if (to === 'Unknown' && currentState.transferForm.recipient) to = currentState.transferForm.recipient;
-
-    const numAmount = parseFloat(amount.replace(/[^0-9.]/g, '')) || 0;
-    const newBalance = currentState.balance - numAmount;
-
-    return {
-      from: 'Main Account (...8842)',
-      to,
-      amount,
-      note,
-      newBalance: newBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    };
-  };
-
   const executeActionSequence = async (actions: AgentAction[]) => {
-    if (!actions || !Array.isArray(actions)) {
-      console.warn("No valid actions to execute");
-      return;
-    }
-
+    if (!actions || !Array.isArray(actions)) return;
     setSystemStatus('PROCESSING');
 
     for (const action of actions) {
-      const confidence = action.confidence || 95; 
+      const confidence = action.confidence || 95;
+      if (action.target) setActiveHighlight(action.target.toLowerCase());
 
-      if (action.target || action.page) {
-        let highlightId = (action.target || action.page || '').toLowerCase();
-        if (highlightId.includes('submit')) highlightId = 'submit';
-        if (highlightId.includes('recipient')) highlightId = 'recipient';
-        if (highlightId.includes('amount')) highlightId = 'amount';
-        if (highlightId.includes('chart')) highlightId = 'chart';
-        if (highlightId.includes('balance')) highlightId = 'balance';
-        if (highlightId.includes('overview') || highlightId.includes('transfer') || highlightId.includes('transaction') || highlightId.includes('insight') || highlightId.includes('nav')) highlightId = 'nav';
+      // Delegate pure automation actions to the Engine
+      const automationActions = ['SCREENSHOT', 'READ_PAGE', 'SCROLL', 'WAIT', 'VERIFY', 'HOVER', 'GET_ELEMENT_VALUE'];
+      
+      if (automationActions.includes(action.type)) {
+        addStep(AgentType.INTERPRETER, 'processing', `Executing ${action.type}...`, confidence);
+        const report = await automationEngine.current.executeActions([action as any]);
         
-        setActiveHighlight(highlightId);
+        if (report.results[0]?.screenshot) {
+           setMessages(prev => [...prev, {
+             id: Date.now().toString(),
+             sender: AgentType.INTERPRETER,
+             content: "I've captured a screenshot of the current view for analysis.",
+             timestamp: new Date()
+           }]);
+        }
+        
+        if (action.type === 'VERIFY') {
+           const result = report.results[0];
+           if (result.success) {
+               addStep(AgentType.INTERPRETER, 'completed', result.message, 100);
+           } else {
+               addStep(AgentType.INTERPRETER, 'completed', `Verification Failed: ${result.message}`, 0);
+               console.warn("Verification failed during execution");
+           }
+        }
+        
+        updateLastStepStatus('completed');
+        await delay(500);
+        continue;
       }
+
+      // Legacy/Hybrid handling for NAVIGATE, CLICK, FILL_INPUT
+      // We essentially map high-level AgentActions to AutomationActions if needed
+      // But for this Mock app, we keep some specific state logic 
 
       switch (action.type) {
         case 'NAVIGATE':
-          const requestedPage = (action.page || action.target || '').toLowerCase();
-          let targetPageId = '';
-
-          // 1. Try direct ID match from map
-          const directMatch = AVAILABLE_PAGES.find(p => p.id === requestedPage);
-          if (directMatch) {
-             targetPageId = directMatch.id;
-          } else {
-             // 2. Try alias detection
-             const detected = detectNavigationTarget(requestedPage);
-             if (detected) {
-               targetPageId = detected.id;
-             }
-          }
-
-          // 3. Fallback logic
+          // Enhanced logic using detecting
+          let targetPageId = action.page?.toLowerCase() || action.target?.toLowerCase() || '';
           if (!targetPageId) {
-             if (requestedPage.includes('setting')) targetPageId = 'settings';
-             else if (requestedPage.includes('transfer')) targetPageId = 'transfer';
-             else targetPageId = 'overview';
+             const detected = detectNavigationTarget(action.description || '');
+             targetPageId = detected?.id || 'overview';
           }
           
+          // Use automation engine to "navigate" (which dispatches event)
           addStep(AgentType.EXECUTOR, 'processing', `Navigating to ${targetPageId}...`, confidence);
-          await delay(1000);
-          setDashboardState(prev => ({
-            ...prev,
-            currentPage: targetPageId as any,
-            lastTransactionStatus: 'idle'
-          }));
+          await automationEngine.current.executeActions([{
+            type: 'NAVIGATE',
+            page: targetPageId
+          }]);
           updateLastStepStatus('completed');
-          break;
-
-        case 'ANALYZE_CHART':
-          setIsScanning(true);
-          setActiveHighlight('chart');
-          addStep(AgentType.INTERPRETER, 'processing', 'Scanning visual analytics...', confidence);
-          await delay(2000);
-          addStep(AgentType.INTERPRETER, 'completed', 'Analysis complete. Pattern recognition successful.', confidence);
-          setIsScanning(false);
           break;
 
         case 'FILL_INPUT':
-          addStep(AgentType.INTERPRETER, 'processing', `Locating field: ${action.target}`, confidence);
-          await delay(800);
-          updateLastStepStatus('completed');
+          addStep(AgentType.EXECUTOR, 'processing', `Typing "${action.value}" into ${action.target}...`, confidence);
           
-          addStep(AgentType.EXECUTOR, 'processing', `Typing "${action.value}"...`, confidence);
-          await delay(600);
+          // Try to use automation engine first to interact with DOM
+          let selector = '';
+          if (action.target?.includes('recipient')) selector = 'input[placeholder*="Search"]';
+          if (action.target?.includes('amount')) selector = 'input[placeholder*="0.00"]';
           
-          setDashboardState(prev => {
-            const field = action.target?.toLowerCase() || '';
-            const newState = { ...prev.transferForm };
-            if (field.includes('recipient')) newState.recipient = action.value || '';
-            if (field.includes('amount')) newState.amount = action.value || '';
-            if (field.includes('note')) newState.note = action.value || '';
-            return { ...prev, transferForm: newState };
-          });
-          updateLastStepStatus('completed');
-          break;
-        
-        case 'EXTRACT_DATA':
-          setIsScanning(true);
-          addStep(AgentType.INTERPRETER, 'processing', 'De-rendering visual document structure...', confidence);
-          await delay(2000);
-          addStep(AgentType.EXECUTOR, 'processing', 'Structuring tabular data...', confidence);
-          await delay(1000);
-          setDashboardState(prev => ({
-            ...prev,
-            transactions: [...(action.value ? JSON.parse(action.value) : []), ...prev.transactions]
-          }));
-          updateLastStepStatus('completed');
-          setIsScanning(false);
-          break;
-
-        case 'CLICK':
-          addStep(AgentType.EXECUTOR, 'processing', `Clicking "${action.target}"`, confidence);
-          await delay(800);
-          if (action.target?.toLowerCase().includes('submit')) {
-            setDashboardState(prev => ({ ...prev, lastTransactionStatus: 'pending' }));
-            await delay(1500);
-            setDashboardState(prev => ({ 
-              ...prev, 
-              lastTransactionStatus: 'success', 
-              balance: prev.balance - Number(prev.transferForm.amount || 0) 
-            }));
+          if (selector) {
+             await automationEngine.current.executeActions([{
+                type: 'FILL_INPUT',
+                selector: selector,
+                value: action.value
+             }]);
+          } else {
+             // Fallback to state update if DOM interaction fails or for robustness
+             setDashboardState(prev => {
+              const field = action.target?.toLowerCase() || '';
+              const newState = { ...prev.transferForm };
+              if (field.includes('recipient')) newState.recipient = action.value || '';
+              if (field.includes('amount')) newState.amount = action.value || '';
+              if (field.includes('note')) newState.note = action.value || '';
+              return { ...prev, transferForm: newState };
+            });
           }
           updateLastStepStatus('completed');
           break;
+
+        case 'CLICK':
+           addStep(AgentType.EXECUTOR, 'processing', `Clicking ${action.target}...`, confidence);
+           if (action.target?.toLowerCase().includes('submit')) {
+             await automationEngine.current.executeActions([{
+               type: 'CLICK',
+               selector: 'button[type="submit"]'
+             }]);
+           }
+           updateLastStepStatus('completed');
+           break;
+
+        case 'ANALYZE_CHART':
+          setIsScanning(true);
+          addStep(AgentType.INTERPRETER, 'processing', 'Scanning analytics...', confidence);
+          await delay(2000);
+          updateLastStepStatus('completed');
+          setIsScanning(false);
+          break;
       }
-      
       await delay(500);
       setActiveHighlight(null);
     }
+  };
+
+  const extractTransactionDetails = (actions: AgentAction[], currentState: DashboardState): TransactionPreview => {
+    let amount = '0';
+    let to = 'Unknown';
+    actions.forEach(a => {
+      if (a.type === 'FILL_INPUT' && a.value) {
+        if (a.target?.includes('amount')) amount = a.value;
+        if (a.target?.includes('recipient')) to = a.value;
+      }
+    });
+    if (amount === '0') amount = currentState.transferForm.amount || '0';
+    if (to === 'Unknown') to = currentState.transferForm.recipient || 'Unknown';
+    return { from: 'Main Account', to, amount, newBalance: (currentState.balance - parseFloat(amount)).toFixed(2) };
   };
 
   const handleSafetyConfirm = async () => {
@@ -438,16 +327,8 @@ const App: React.FC = () => {
     if (pendingAction) {
       setIsProcessing(true);
       setSystemStatus('PROCESSING');
-      addStep(AgentType.MANAGER, 'completed', 'Authorization confirmed. Resuming...', 100);
       await executeActionSequence(pendingAction.actions);
-      
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        sender: AgentType.MANAGER,
-        content: pendingAction.originalResponse.message,
-        timestamp: new Date()
-      }]);
-      
+      setMessages(prev => [...prev, { id: Date.now().toString(), sender: AgentType.MANAGER, content: pendingAction.originalResponse.message, timestamp: new Date() }]);
       setPendingAction(null);
       setIsProcessing(false);
       setSystemStatus('IDLE');
@@ -458,194 +339,100 @@ const App: React.FC = () => {
     setShowSafetyModal(false);
     setPendingAction(null);
     setSystemStatus('IDLE');
-    addStep(AgentType.MANAGER, 'completed', 'Action denied by user.', 100);
     setIsProcessing(false);
-    setMessages(prev => [...prev, {
-      id: Date.now().toString(),
-      sender: AgentType.MANAGER,
-      content: "I have cancelled the operation.",
-      timestamp: new Date()
-    }]);
+    setMessages(prev => [...prev, { id: Date.now().toString(), sender: AgentType.MANAGER, content: "Cancelled.", timestamp: new Date() }]);
   };
 
-  const handleFileUpload = (file: File) => {
-    setDashboardState(prev => ({ ...prev, uploadedFile: file }));
-    setInputValue("Analyze this uploaded document");
-  };
-
-  // --- Helpers ---
   const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
-
   const addStep = (agent: AgentType, status: ProcessingStep['status'], description: string, confidence?: number) => {
     setAgentSteps(prev => [...prev, { agent, status, description, confidence }]);
   };
-
   const updateLastStepStatus = (status: ProcessingStep['status']) => {
-    setAgentSteps(prev => {
-      const newSteps = [...prev];
-      if (newSteps.length > 0) {
-        newSteps[newSteps.length - 1].status = status;
-      }
-      return newSteps;
-    });
+    setAgentSteps(prev => { const n = [...prev]; if(n.length) n[n.length-1].status = status; return n; });
   };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'PROCESSING': return 'text-brand-cyan drop-shadow-[0_0_8px_rgba(0,217,255,0.5)]';
-      case 'WAITING_APPROVAL': return 'text-brand-orange drop-shadow-[0_0_8px_rgba(255,107,53,0.5)]';
-      case 'SAFE_MODE': return 'text-brand-mint';
-      default: return 'text-brand-mint drop-shadow-[0_0_8px_rgba(0,208,132,0.3)]';
-    }
-  };
-
-  const getStatusDot = (status: string) => {
-    if (status === 'PROCESSING') return <div className="w-2.5 h-2.5 rounded-full bg-brand-cyan animate-pulse-fast shadow-[0_0_10px_#00D9FF]"></div>;
-    if (status === 'WAITING_APPROVAL') return <div className="w-2.5 h-2.5 rounded-full bg-brand-orange animate-pulse shadow-[0_0_10px_#FF6B35]"></div>;
-    return <div className="w-2.5 h-2.5 rounded-full bg-brand-mint shadow-[0_0_8px_#00D084]"></div>;
-  };
+  const getStatusColor = (s: string) => s === 'PROCESSING' ? 'text-brand-cyan' : s === 'WAITING_APPROVAL' ? 'text-brand-orange' : 'text-brand-mint';
 
   return (
     <div className="flex h-screen w-screen bg-brand-dark overflow-hidden font-sans text-slate-200">
-      
       <div className="sr-only" role="status" aria-live="polite" ref={liveRegionRef}></div>
 
-      {/* LEFT PANEL: Chat & Agent Brain */}
+      {/* LEFT PANEL */}
       <div className="w-1/3 min-w-[400px] border-r border-[#25252b] flex flex-col bg-brand-dark z-10 relative">
-        
-        {/* Header */}
         <div className="p-5 border-b border-[#25252b] bg-brand-dark/95 flex flex-col gap-3 backdrop-blur-sm">
           <div className="flex justify-between items-start">
             <div>
-              <h1 className="text-2xl font-bold text-white tracking-tighter flex items-center gap-2">
-                <span className="text-brand-cyan">A.F.A.A.</span>
-              </h1>
+              <h1 className="text-2xl font-bold text-white tracking-tighter flex items-center gap-2"><span className="text-brand-cyan">A.F.A.A.</span></h1>
               <span className="text-[10px] font-mono text-slate-500 uppercase tracking-[0.2em]">Autonomous Financial Agent</span>
             </div>
-            
-            {/* Status Pod */}
             <div className="flex items-center gap-3 bg-[#1C1C21] border border-[#25252b] rounded-full px-3 py-1.5 shadow-inner">
-               {getStatusDot(systemStatus)}
-               <span className={`text-[10px] font-bold tracking-widest ${getStatusColor(systemStatus)}`}>
-                 {systemStatus.replace('_', ' ')}
-               </span>
+               <div className={`w-2.5 h-2.5 rounded-full ${systemStatus === 'PROCESSING' ? 'bg-brand-cyan animate-pulse' : systemStatus === 'WAITING_APPROVAL' ? 'bg-brand-orange animate-pulse' : 'bg-brand-mint'}`}></div>
+               <span className={`text-[10px] font-bold tracking-widest ${getStatusColor(systemStatus)}`}>{systemStatus.replace('_', ' ')}</span>
             </div>
           </div>
-          
           <div className="flex justify-between items-center mt-2">
-             <div className="flex gap-2 text-[10px] text-slate-500 font-mono">
-               <span className="bg-[#1C1C21] px-1.5 py-0.5 rounded border border-[#25252b]">Ctrl+T Transfer</span>
-               <span className="bg-[#1C1C21] px-1.5 py-0.5 rounded border border-[#25252b]">Ctrl+M Manual</span>
-             </div>
-
+            <div className="flex gap-2 text-[10px] text-slate-500 font-mono">
+              <span className="bg-[#1C1C21] px-1.5 py-0.5 rounded border border-[#25252b]">Ctrl+T Transfer</span>
+              <span className="bg-[#1C1C21] px-1.5 py-0.5 rounded border border-[#25252b]">Ctrl+D Dashboard</span>
+            </div>
             <div className="flex gap-2">
-              <button 
-                onClick={() => setSimpleMode(!simpleMode)}
-                className={`flex items-center gap-2 px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all ${simpleMode ? 'bg-brand-purple/20 border-brand-purple text-brand-purple shadow-[0_0_10px_rgba(139,92,246,0.3)]' : 'bg-[#1C1C21] border-[#25252b] text-slate-500'}`}
-              >
-                <div className={`w-1.5 h-1.5 rounded-full ${simpleMode ? 'bg-brand-purple' : 'bg-slate-500'}`}></div>
-                SIMPLE MODE
-              </button>
-              
-              {/* NEW: Manual Mode Toggle */}
-              <button 
-                onClick={() => setManualMode(!manualMode)}
-                className={`flex items-center gap-2 px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all ${manualMode ? 'bg-brand-lime/20 border-brand-lime text-brand-lime shadow-[0_0_10px_rgba(210,241,89,0.3)]' : 'bg-[#1C1C21] border-[#25252b] text-slate-500'}`}
-              >
-                <div className={`w-1.5 h-1.5 rounded-full ${manualMode ? 'bg-brand-lime' : 'bg-slate-500'}`}></div>
-                MANUAL
-              </button>
+              <button onClick={() => setManualMode(!manualMode)} className={`flex items-center gap-2 px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all ${manualMode ? 'bg-brand-lime/20 border-brand-lime text-brand-lime' : 'bg-[#1C1C21] border-[#25252b] text-slate-500'}`}>MANUAL</button>
             </div>
           </div>
         </div>
 
-        {/* Agent Activity Feed */}
         <div className="flex-1 overflow-y-auto p-4 border-b border-[#25252b] bg-[#0F0F12]">
-          <div className="flex items-center justify-between mb-4">
-             <h2 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Neural Activity Log</h2>
-             <div className="h-px bg-[#25252b] flex-1 ml-4"></div>
-          </div>
           <AgentStatusPanel steps={agentSteps} />
         </div>
 
-        {/* Chat Interface */}
         <div className="h-[45%] flex flex-col bg-brand-dark shadow-[0_-10px_40px_rgba(0,0,0,0.5)] z-20">
-           <div className="flex-1 overflow-y-auto p-4 space-y-4" role="log">
+           <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {messages.map((msg) => (
                 <div key={msg.id} className={`flex ${msg.sender === AgentType.USER ? 'justify-end' : 'justify-start'} animate-[fadeIn_0.3s_ease-out]`}>
-                  <div className={`max-w-[85%] p-3.5 rounded-xl text-sm leading-relaxed shadow-sm ${
-                    msg.sender === AgentType.USER 
-                      ? 'bg-[#25252b] text-slate-200 rounded-tr-none' 
-                      : 'bg-brand-cyan/5 text-brand-cyan border border-brand-cyan/20 rounded-tl-none shadow-[0_2px_15px_rgba(0,217,255,0.05)]'
-                  }`}>
+                  <div className={`max-w-[85%] p-3.5 rounded-xl text-sm leading-relaxed shadow-sm ${msg.sender === AgentType.USER ? 'bg-[#25252b] text-slate-200' : 'bg-brand-cyan/5 text-brand-cyan border border-brand-cyan/20'}`}>
                     {msg.content}
+                    {msg.metadata?.screenshots?.map((src, i) => (
+                      <img key={i} src={src} alt="Screen capture" className="mt-2 rounded border border-brand-cyan/30 max-h-32" />
+                    ))}
                   </div>
                 </div>
               ))}
               <div ref={messagesEndRef} />
            </div>
-
            {!manualMode && (
              <div className="p-4 border-t border-[#25252b] bg-[#0F0F12]">
                <div className="flex gap-2 relative">
-                 <input
-                   ref={inputRef}
-                   type="text"
-                   value={inputValue}
-                   onChange={(e) => setInputValue(e.target.value)}
-                   onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                   placeholder="Type instructions..."
-                   className="flex-1 bg-[#1C1C21] border border-[#25252b] text-slate-200 rounded-lg p-3 text-sm focus:border-brand-cyan focus:outline-none focus:ring-1 focus:ring-brand-cyan transition-colors"
-                   disabled={isProcessing}
-                 />
-                 <button 
-                  onClick={handleSendMessage}
-                  disabled={isProcessing}
-                  className="bg-brand-cyan hover:bg-cyan-400 text-slate-900 px-5 py-2 rounded-lg text-sm disabled:opacity-50 font-bold transition-all shadow-[0_0_15px_rgba(0,217,255,0.3)] hover:shadow-[0_0_25px_rgba(0,217,255,0.5)]"
-                 >
-                   {isProcessing ? '...' : 'SEND'}
-                 </button>
+                 <input ref={inputRef} type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Type commands..." className="flex-1 bg-[#1C1C21] border border-[#25252b] text-slate-200 rounded-lg p-3 text-sm focus:border-brand-cyan focus:outline-none" disabled={isProcessing} />
+                 <button onClick={handleSendMessage} disabled={isProcessing} className="bg-brand-cyan hover:bg-cyan-400 text-slate-900 px-5 py-2 rounded-lg text-sm font-bold transition-all">{isProcessing ? '...' : 'SEND'}</button>
                </div>
              </div>
            )}
         </div>
       </div>
 
-      {/* RIGHT PANEL: Browser Simulation */}
+      {/* RIGHT PANEL */}
       <div className="flex-1 bg-brand-dark flex flex-col relative" aria-hidden={isScanning}>
         <div className="bg-[#1C1C21] p-2 flex items-center gap-3 text-xs text-slate-400 border-b border-[#25252b]">
-           <div className="flex gap-1.5 ml-2">
-             <div className="w-2.5 h-2.5 rounded-full bg-red-500/20 border border-red-500/50"></div>
-             <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/20 border border-yellow-500/50"></div>
-             <div className="w-2.5 h-2.5 rounded-full bg-green-500/20 border border-green-500/50"></div>
-           </div>
-           <div className="bg-[#0F0F12] px-4 py-1.5 rounded flex-1 text-center font-mono opacity-60 truncate border border-[#25252b] text-[10px]">
-             https://portal.darlene.demo/dashboard/{dashboardState.currentPage}
-           </div>
+           <div className="flex gap-1.5 ml-2"><div className="w-2.5 h-2.5 rounded-full bg-red-500/20"></div><div className="w-2.5 h-2.5 rounded-full bg-yellow-500/20"></div><div className="w-2.5 h-2.5 rounded-full bg-green-500/20"></div></div>
+           <div className="bg-[#0F0F12] px-4 py-1.5 rounded flex-1 text-center font-mono opacity-60 truncate border border-[#25252b] text-[10px]">https://portal.darlene.demo/dashboard/{dashboardState.currentPage}</div>
         </div>
-        
         <div className="flex-1 relative overflow-hidden">
            <MockFinancialDashboard 
             state={dashboardState} 
             scanning={isScanning} 
-            highlightTarget={activeHighlight}
-            onFileUpload={handleFileUpload}
-            onNavigate={handleManualNavigation}
-            manualMode={manualMode}
-            onFormFieldChange={handleFormFieldChange}
-            onTransferSubmit={handleManualTransferSubmit}
-            formErrors={formErrors}
+            highlightTarget={activeHighlight} 
+            onFileUpload={handleFileUpload} 
+            onNavigate={handleManualNavigation} 
+            manualMode={manualMode} 
+            onFormFieldChange={handleFormFieldChange} 
+            onTransferSubmit={handleManualTransferSubmit} 
+            formErrors={formErrors} 
             isSubmittingTransfer={isSubmittingTransfer}
+            agentManager={agentManager}
           />
         </div>
       </div>
 
-      <SafetyModal 
-        isOpen={showSafetyModal}
-        transactionDetails={transactionPreview}
-        onConfirm={handleSafetyConfirm}
-        onCancel={handleSafetyDeny}
-      />
+      <SafetyModal isOpen={showSafetyModal} transactionDetails={transactionPreview} onConfirm={handleSafetyConfirm} onCancel={handleSafetyDeny} />
     </div>
   );
 };

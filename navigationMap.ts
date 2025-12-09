@@ -36,6 +36,12 @@ export const AVAILABLE_PAGES: PageRoute[] = [
     name: 'settings',
     aliases: ['settings', 'preferences', 'config', 'profile', 'account'],
     displayName: 'Settings'
+  },
+  {
+    id: 'agent-mode',
+    name: 'agent mode',
+    aliases: ['agents', 'agent mode', 'sub agents', 'comet', 'workers', 'bot manager'],
+    displayName: 'Agent Mode'
   }
 ];
 

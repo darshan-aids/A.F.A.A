@@ -26,14 +26,11 @@ export const processUserRequest = async (
   try {
     const model = 'gemini-2.5-flash'; 
 
-    // Inject accurate state data so the "Visual Interpreter" doesn't hallucinate
     const screenContext = {
       current_screen: dashboardState.currentPage,
       visible_data: {
         balance: dashboardState.balance,
-        // Only show transfer form details if on that page to simulate visual visibility
         transfer_form: dashboardState.currentPage === 'transfer' ? dashboardState.transferForm : 'Not visible',
-        // Only show transactions if on that page (or if explicitly requested to look at history, though usually requires nav)
         recent_transactions: dashboardState.currentPage === 'transactions' ? dashboardState.transactions : 'User must navigate to Transactions page to see details',
         transaction_status: dashboardState.lastTransactionStatus
       }
@@ -45,9 +42,18 @@ export const processUserRequest = async (
       
       Instructions:
       1. Use the "visible_data" to answer questions accurately.
-      2. If navigating, set target to one of the available pages: overview, transfer, transactions, reports, etc.
+      2. If navigating, set target to one of the available pages: overview, transfer, transactions, reports.
       3. If filling a form, use targets 'recipient', 'amount', 'note'.
-      4. If user asks about spending history, NAVIGATE to 'transactions' first.
+      4. BROWSER AUTOMATION TOOLS AVAILABLE:
+         - "SCREENSHOT": Take a visual snapshot of the current state.
+         - "READ_PAGE": Scan the DOM for accessibility structure.
+         - "NAVIGATE": Go to a specific page.
+         - "FILL_INPUT": Type into a field.
+         - "SCROLL": Scroll the page (direction: 'up'/'down', amount: px).
+         - "WAIT": Pause execution (duration: ms).
+         - "VERIFY": Check if specific text exists on the page.
+         - "HOVER": Simulate mouse hover over an element.
+         - "GET_ELEMENT_VALUE": Read text/value from a specific element.
       5. If the user wants to transfer money, YOU MUST set safety to "REQUIRE_CONFIRMATION".
       6. Assign a confidence score (0-100) to actions.
     `;
@@ -55,9 +61,8 @@ export const processUserRequest = async (
     if (config?.simpleMode) {
       prompt += `
       ADOPT PERSONA: Financial Translator. 
-      - Simplify ALL financial jargon into plain English (e.g., instead of "revenue", say "money coming in").
-      - Keep sentences short, direct, and easy to read (max 15 words per sentence where possible).
-      - Avoid technical banking terms.
+      - Simplify ALL financial jargon into plain English.
+      - Keep sentences short.
       `;
     }
 
@@ -69,12 +74,18 @@ export const processUserRequest = async (
         "safety": "SAFE" | "WARNING" | "REQUIRE_CONFIRMATION",
         "actions": [
           {
-            "type": "NAVIGATE" | "FILL_INPUT" | "CLICK" | "ANALYZE_CHART",
+            "type": "NAVIGATE" | "FILL_INPUT" | "CLICK" | "ANALYZE_CHART" | "SCREENSHOT" | "READ_PAGE" | "SCROLL" | "WAIT" | "VERIFY" | "HOVER" | "GET_ELEMENT_VALUE",
             "page": "overview" | "transactions" | "transfer" | "reports",
             "target": "field/button/page name",
             "value": "value to fill if applicable",
             "description": "Short description of action",
-            "confidence": 95
+            "confidence": 95,
+            "elementText": "Text of element to click/interact with",
+            "selector": "CSS selector if known",
+            "amount": 100,
+            "direction": "down",
+            "duration": 1000,
+            "expectedText": "Text to verify"
           }
         ]
       }
@@ -105,7 +116,13 @@ export const processUserRequest = async (
                   page: { type: Type.STRING },
                   value: { type: Type.STRING },
                   description: { type: Type.STRING },
-                  confidence: { type: Type.NUMBER }
+                  confidence: { type: Type.NUMBER },
+                  elementText: { type: Type.STRING },
+                  selector: { type: Type.STRING },
+                  amount: { type: Type.NUMBER },
+                  direction: { type: Type.STRING },
+                  duration: { type: Type.NUMBER },
+                  expectedText: { type: Type.STRING }
                 }
               }
             }
@@ -123,12 +140,10 @@ export const processUserRequest = async (
         throw new Error("Invalid JSON response");
       }
 
-      // Handle null or invalid objects
       if (!parsed || typeof parsed !== 'object') {
         parsed = {};
       }
 
-      // Ensure arrays are initialized even if model omits them to prevent iteration errors
       return {
         message: parsed.message || "I have processed your request.",
         actions: Array.isArray(parsed.actions) ? parsed.actions : [],

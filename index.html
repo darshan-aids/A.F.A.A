@@ -26,11 +26,16 @@
               'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
               'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
               'scan': 'scan 2s linear infinite',
+              'fadeIn': 'fadeIn 0.5s ease-out forwards',
             },
             keyframes: {
               scan: {
-                '0%': { transform: 'translateY(-100%)' },
-                '100%': { transform: 'translateY(100%)' },
+                '0%': { transform: 'translateX(-100%)' },
+                '100%': { transform: 'translateX(100vw)' },
+              },
+              fadeIn: {
+                '0%': { opacity: '0', transform: 'translateY(10px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
               }
             },
             fontFamily: {
@@ -104,6 +109,11 @@
         transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
         transition-duration: 200ms;
       }
+
+      /* Pulse animations */
+      .animate-pulse-fast {
+        animation: pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
     </style>
   <script type="importmap">
 {
@@ -115,7 +125,9 @@
     "react/": "https://aistudiocdn.com/react@^19.2.1/",
     "react": "https://aistudiocdn.com/react@^19.2.1",
     "vite": "https://aistudiocdn.com/vite@^7.2.6",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1"
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
+    "html2canvas": "https://aistudiocdn.com/html2canvas@^1.4.1",
+    "uuid": "https://aistudiocdn.com/uuid@^13.0.0"
   }
 }
 </script>

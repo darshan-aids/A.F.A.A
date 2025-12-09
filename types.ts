@@ -20,6 +20,7 @@ export interface ChatMessage {
   metadata?: {
     thoughtChain?: string[];
     safetyStatus?: SafetyStatus;
+    screenshots?: string[];
   };
 }
 
@@ -33,7 +34,7 @@ export interface Transaction {
 }
 
 export interface DashboardState {
-  currentPage: 'overview' | 'transfer' | 'settings' | 'transactions' | 'reports';
+  currentPage: 'overview' | 'transfer' | 'settings' | 'transactions' | 'reports' | 'agent-mode';
   balance: number;
   transferForm: {
     recipient: string;
@@ -46,12 +47,20 @@ export interface DashboardState {
 }
 
 export interface AgentAction {
-  type: 'NAVIGATE' | 'FILL_INPUT' | 'CLICK' | 'ANALYZE_CHART' | 'EXTRACT_DATA';
+  type: 'NAVIGATE' | 'FILL_INPUT' | 'CLICK' | 'ANALYZE_CHART' | 'EXTRACT_DATA' | 'SCREENSHOT' | 'READ_PAGE' | 'WAIT' | 'SCROLL' | 'VERIFY' | 'HOVER' | 'GET_ELEMENT_VALUE' | 'browse';
   target?: string;
   page?: string;
   value?: string;
   description: string;
-  confidence?: number; // 0-100 score
+  confidence?: number;
+  
+  // Advanced Automation Properties
+  selector?: string;
+  elementText?: string;
+  amount?: number;
+  direction?: 'up' | 'down' | 'left' | 'right';
+  expectedText?: string;
+  payload?: any;
 }
 
 export interface ProcessingStep {
@@ -60,3 +69,21 @@ export interface ProcessingStep {
   description: string;
   confidence?: number;
 }
+
+// Sub-Agent Types
+export type AgentMessage = {
+  role: "user" | "assistant" | "agent" | "system";
+  content: string;
+  timestamp?: string;
+  meta?: Record<string, any>;
+};
+
+export type SubAgent = {
+  id: string;
+  name: string;
+  goals: string[];
+  messages: AgentMessage[];
+  memory: any[];
+  running: boolean;
+  createdAt: string;
+};
