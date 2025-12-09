@@ -42,7 +42,7 @@ export const processUserRequest = async (
       
       Instructions:
       1. Use the "visible_data" to answer questions accurately.
-      2. If navigating, set target to one of the available pages: overview, transfer, transactions, reports.
+      2. If navigating, set target to one of the available pages: overview, transfer, transactions, reports, agent-mode.
       3. If filling a form, use targets 'recipient', 'amount', 'note'.
       4. BROWSER AUTOMATION TOOLS AVAILABLE:
          - "SCREENSHOT": Take a visual snapshot of the current state.
@@ -75,7 +75,7 @@ export const processUserRequest = async (
         "actions": [
           {
             "type": "NAVIGATE" | "FILL_INPUT" | "CLICK" | "ANALYZE_CHART" | "SCREENSHOT" | "READ_PAGE" | "SCROLL" | "WAIT" | "VERIFY" | "HOVER" | "GET_ELEMENT_VALUE",
-            "page": "overview" | "transactions" | "transfer" | "reports",
+            "page": "overview" | "transactions" | "transfer" | "reports" | "agent-mode",
             "target": "field/button/page name",
             "value": "value to fill if applicable",
             "description": "Short description of action",

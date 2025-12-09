@@ -10,19 +10,19 @@ export const AVAILABLE_PAGES: PageRoute[] = [
   {
     id: 'overview',
     name: 'overview',
-    aliases: ['dashboard', 'home', 'main', 'start', 'overview', 'balance'],
+    aliases: ['dashboard', 'home', 'main', 'start', 'overview', 'balance', 'summary'],
     displayName: 'Overview Dashboard'
   },
   {
     id: 'transactions',
     name: 'insights',
-    aliases: ['insights', 'transactions', 'history', 'activity', 'transaction history', 'records', 'statement', 'recent'],
+    aliases: ['insights', 'insight', 'transactions', 'transaction', 'history', 'activity', 'transaction history', 'records', 'statement', 'recent'],
     displayName: 'Insights & Transactions'
   },
   {
     id: 'transfer',
     name: 'transfer',
-    aliases: ['transfer', 'send money', 'send', 'payment', 'send funds', 'pay'],
+    aliases: ['transfer', 'transfers', 'send money', 'send', 'payment', 'send funds', 'pay'],
     displayName: 'Money Transfer'
   },
   {
@@ -40,7 +40,7 @@ export const AVAILABLE_PAGES: PageRoute[] = [
   {
     id: 'agent-mode',
     name: 'agent mode',
-    aliases: ['agents', 'agent mode', 'sub agents', 'comet', 'workers', 'bot manager'],
+    aliases: ['agents', 'agent', 'agent mode', 'sub agents', 'comet', 'workers', 'bot manager'],
     displayName: 'Agent Mode'
   }
 ];

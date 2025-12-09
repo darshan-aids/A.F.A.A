@@ -1,5 +1,6 @@
 
 import html2canvas from 'html2canvas';
+import { fetchPageText } from './services/browserAgent';
 
 export type ActionType = 
   | 'SCREENSHOT'
@@ -13,7 +14,8 @@ export type ActionType =
   | 'VERIFY'
   | 'HOVER'
   | 'GET_ELEMENT_VALUE'
-  | 'WAIT_FOR_SELECTOR';
+  | 'WAIT_FOR_SELECTOR'
+  | 'BROWSE';
 
 export interface AutomationAction {
   type: ActionType;
@@ -95,6 +97,7 @@ export class BrowserAutomationEngine {
         case 'HOVER': return await this.hover(action);
         case 'GET_ELEMENT_VALUE': return await this.getElementValue(action);
         case 'WAIT_FOR_SELECTOR': return await this.waitForSelector(action);
+        case 'BROWSE': return await this.browse(action);
         default: return { type: action.type, success: false, timestamp, message: `Unknown action: ${action.type}` };
       }
     } catch (error) {
@@ -129,12 +132,10 @@ export class BrowserAutomationEngine {
              return { type: 'NAVIGATE', success: true, timestamp, message: `Navigated to ${pageId}` };
         }
 
-        // Full URL navigation
+        // Full URL navigation logic is now handled by BROWSE or simple logging for NAVIGATE
         if (action.url && /^https?:\/\//i.test(action.url)) {
-            // For this mock application, we simulate external navigation or log it.
-            // In a real browser agent, this would be: window.location.href = action.url;
             console.log(`[Automation] External navigation requested to ${action.url}`);
-            return { type: 'NAVIGATE', success: true, timestamp, message: `Mock: Navigated to external URL ${action.url}` };
+            return { type: 'NAVIGATE', success: true, timestamp, message: `Mock: Navigated to external URL ${action.url}. Use BROWSE to read content.` };
         }
         
         // Fallback target property
@@ -148,6 +149,25 @@ export class BrowserAutomationEngine {
 
     } catch (e) {
         return { type: 'NAVIGATE', success: false, timestamp, message: 'Navigation error', error: String(e) };
+    }
+  }
+
+  private async browse(action: AutomationAction): Promise<ActionResult> {
+    if (!action.url) {
+      return { type: 'BROWSE', success: false, timestamp: new Date().toISOString(), message: 'No URL specified for browsing' };
+    }
+    try {
+      const { text, links } = await fetchPageText(action.url);
+      const summary = text.slice(0, 500) + (text.length > 500 ? '...' : '');
+      return { 
+        type: 'BROWSE', 
+        success: true, 
+        timestamp: new Date().toISOString(), 
+        message: `Browsed ${action.url}`,
+        data: { text, links }
+      };
+    } catch (e) {
+      return { type: 'BROWSE', success: false, timestamp: new Date().toISOString(), message: 'Browse failed', error: String(e) };
     }
   }
 
@@ -298,7 +318,6 @@ export class BrowserAutomationEngine {
 
   // --- Helpers ---
 
-  // Strategy: Selector -> ID -> Text (XPath) -> Aria Label
   private findElementBestEffort(action: AutomationAction): HTMLElement | null {
     // 1. Explicit Selector
     if (action.selector) {
@@ -312,8 +331,7 @@ export class BrowserAutomationEngine {
 
     // 2. Text Search (Fuzzy or XPath)
     if (action.elementText) {
-      // Try XPath first (Case insensitive attempt)
-      const cleanText = action.elementText.replace(/'/g, "\\'"); // Basic escape
+      const cleanText = action.elementText.replace(/'/g, "\\'");
       const xpath = `//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${cleanText.toLowerCase()}')]`;
       
       try {
@@ -323,7 +341,6 @@ export class BrowserAutomationEngine {
         console.warn("XPath evaluation failed", e);
       }
       
-      // Fallback: Scan buttons and inputs for value/label match
       const interactables = Array.from(document.querySelectorAll('button, a, input, [role="button"]'));
       const match = interactables.find(el => {
          const content = (el.textContent || '').toLowerCase();
@@ -337,11 +354,9 @@ export class BrowserAutomationEngine {
 
     // 3. Last Resort: Target Property used as ID or Placeholder
     if (action.target) {
-       // Try as ID
        const elById = document.getElementById(action.target);
        if (elById) return elById;
        
-       // Try as Placeholder (for inputs)
        const elByPlaceholder = document.querySelector(`input[placeholder*="${action.target}"]`);
        if (elByPlaceholder) return elByPlaceholder as HTMLElement;
     }
@@ -350,7 +365,6 @@ export class BrowserAutomationEngine {
   }
 
   private getPageStructure(): any {
-    // Simplified accessibility tree
     const interactables = Array.from(document.querySelectorAll('button, a, input, [role="button"], h1, h2, h3'));
     return interactables.map(el => ({
       tag: el.tagName,

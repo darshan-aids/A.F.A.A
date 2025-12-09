@@ -246,9 +246,6 @@ const App: React.FC = () => {
       const confidence = action.confidence || 95;
       
       // LEGACY: Delegate pure automation actions to the Engine via legacy path if needed
-      // New Agent Mode uses AgentManager -> AutomationEngine directly.
-      // This path is for the "Chat" interface usage.
-      
       const automationActions = ['SCREENSHOT', 'READ_PAGE', 'SCROLL', 'WAIT', 'VERIFY', 'HOVER', 'GET_ELEMENT_VALUE', 'WAIT_FOR_SELECTOR'];
       
       if (automationActions.includes(action.type)) {
@@ -271,23 +268,26 @@ const App: React.FC = () => {
       switch (action.type) {
         case 'NAVIGATE':
           // Enhanced logic using detecting: check page, target, AND url
-          let targetPageId = (action.page || action.target || action.url || '').toString().toLowerCase().trim();
+          let rawTarget = (action.page || action.target || action.url || '').toString().toLowerCase().trim();
           
-          if (targetPageId.startsWith('http') || targetPageId.includes('/')) {
-             const detected = detectNavigationTarget(action.description || action.url || '');
-             targetPageId = detected?.id || targetPageId;
-          }
+          // Try to resolve the target to a valid internal page ID using aliases (e.g. "go to agent mode" -> "agent-mode")
+          const detected = detectNavigationTarget(rawTarget || action.description || '');
+          let targetPageId = rawTarget; // Default to the raw input if detection fails but we have input
 
-          if (!targetPageId) {
-             const detected = detectNavigationTarget(action.description || '');
-             targetPageId = detected?.id || 'overview';
+          if (detected) {
+            targetPageId = detected.id;
+          } else if (rawTarget.startsWith('http') || rawTarget.includes('/')) {
+             targetPageId = rawTarget; // Keep URL
+          } else if (!rawTarget) {
+             // Only default to overview if we have absolutely no target information
+             targetPageId = 'overview'; 
           }
           
           addStep(AgentType.EXECUTOR, 'processing', `Navigating to ${targetPageId}...`, confidence);
           await automationEngine.current.executeActions([{
             type: 'NAVIGATE',
             page: targetPageId,
-            url: action.url // Pass original URL if needed by engine
+            url: action.url
           }]);
           updateLastStepStatus('completed');
           break;

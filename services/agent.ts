@@ -15,11 +15,9 @@ function normalizeActions(actions: any[]): any[] {
 
     // Support planners that use "url" for SPA page keys or full URLs
     if (clone.url && !clone.page) {
-      // If the url looks like a short page id (no protocol), treat it as page
       if (/^[a-z0-9-_]+$/i.test(String(clone.url))) {
         clone.page = String(clone.url);
       } else {
-        // keep full urls on a url field, but also set page for SPA routing if possible
         clone.page = clone.page || null;
       }
     }
@@ -27,17 +25,15 @@ function normalizeActions(actions: any[]): any[] {
     // Normalize common synonyms
     if (!clone.selector && clone.elementSelector) clone.selector = clone.elementSelector;
     if (!clone.selector && clone.elementText && typeof clone.elementText === 'string') {
-      // prefer selector, but keep elementText for fallback
       clone.selector = clone.selector || undefined;
     }
 
     // Normalize target -> selector/target
     if (!clone.selector && clone.target && clone.target.includes('input')) {
-      // leave target, will be processed by App as a semantic target
       clone.selector = clone.selector || undefined;
     }
 
-    // Ensure type is uppercase for consistent comparisons
+    // Ensure type is uppercase
     if (clone.type && typeof clone.type === 'string') clone.type = clone.type.toUpperCase();
 
     return clone;
@@ -50,7 +46,6 @@ export class AgentManager {
   private engine: BrowserAutomationEngine | null = null;
 
   constructor() {
-    // load from localStorage
     const raw = localStorage.getItem("agents_v1");
     if (raw) {
       try {
@@ -104,6 +99,35 @@ export class AgentManager {
     return newAgent;
   }
 
+  // Handle actions injected manually from the UI
+  async enqueueAction(agentId: string, action: AgentAction) {
+    const agent = this.agents[agentId];
+    if (!agent) return;
+
+    if (action.type === 'browse' || action.type === 'BROWSE') {
+      const url = action.payload?.url || action.url;
+      if (url && this.engine) {
+        this.appendAgentMessage(agentId, 'system', `Browsing ${url}...`);
+        try {
+           // Execute BROWSE via the engine to maintain consistency
+           const report = await this.engine.executeActions([{ type: 'BROWSE', url: url } as AutomationAction]);
+           const result = report.results[0];
+           
+           if (result && result.success && result.data) {
+             const content = `[BROWSER RESULT for ${url}]\n${(result.data.text || '').substring(0, 1000)}...\n\nLinks: ${(result.data.links || []).join(', ')}`;
+             this.appendAgentMessage(agentId, 'system', content, { url });
+             // Trigger agent thought process after receiving content
+             this.runAgentStep(agentId);
+           } else {
+             this.appendAgentMessage(agentId, 'system', `Failed to browse ${url}: ${result.message}`);
+           }
+        } catch (e) {
+           this.appendAgentMessage(agentId, 'system', `Error browsing: ${(e as Error).message}`);
+        }
+      }
+    }
+  }
+
   async sendUserMessage(agentId: string, content: string) {
     const agent = this.agents[agentId];
     if (!agent) throw new Error("agent not found");
@@ -134,12 +158,13 @@ export class AgentManager {
     4. Wait: { "type": "WAIT_FOR_SELECTOR", "selector": "css_selector" }
     5. Scroll: { "type": "SCROLL", "direction": "down" }
     6. Read: { "type": "READ_PAGE" }
+    7. Browse External: { "type": "BROWSE", "url": "https://example.com" }
 
     INSTRUCTIONS:
     - Return a JSON object with an "actions" array and a "summary" string.
     - Do NOT output markdown or code blocks. Just raw JSON.
-    - Use "selector" preference: ID > Placeholder > Aria-Label > Text Content.
     - If you are done, return empty actions.
+    - If you want to read an external link found in history, use BROWSE.
     
     Example Response:
     {
@@ -161,42 +186,40 @@ export class AgentManager {
       });
       
       const rawText = response.text || "{}";
-      // Clean up potential markdown blocks
       const jsonStr = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
       
       let parsed;
       try {
         parsed = JSON.parse(jsonStr);
       } catch (e) {
-        // Fallback if parsing fails - just treat as text response
         this.replaceLastAgentMessage(agentId, rawText);
         return;
       }
 
       const { summary, actions: rawActions } = parsed;
-      
-      // Normalize actions to ensure consistent execution
       const actions = normalizeActions(rawActions);
 
-      // Update the "Thinking..." message with the summary
       this.replaceLastAgentMessage(agentId, summary || "Executing actions...");
 
-      // Execute actions if engine is available
       if (actions && actions.length > 0 && this.engine) {
         const report = await this.engine.executeActions(actions as AutomationAction[]);
         
-        // Log results
-        const resultSummary = report.results.map(r => 
-          `[${r.type}] ${r.success ? '✅' : '❌'} ${r.message} ${r.data ? JSON.stringify(r.data) : ''}`
-        ).join('\n');
+        // Enhance reporting to show BROWSE data content in the system log
+        const resultSummary = report.results.map(r => {
+           let details = r.message;
+           if (r.type === 'BROWSE' && r.success && r.data) {
+               details += `\n[Content Preview]: ${r.data.text.substring(0, 100)}...`;
+               // Feed content back to agent context
+               this.appendAgentMessage(agentId, "system", `[BROWSER CONTENT for ${r.data.url || 'url'}]\n${r.data.text}`);
+           }
+           return `[${r.type}] ${r.success ? '✅' : '❌'} ${details}`;
+        }).join('\n');
 
         this.appendAgentMessage(agentId, "system", `Execution Report:\n${resultSummary}`);
 
-        // Handle screenshots specifically
         const screenshots = report.results.filter(r => r.screenshot).map(r => r.screenshot);
         if (screenshots.length > 0) {
-           // We could attach this to the system message meta
-           agent.messages[agent.messages.length - 1].meta = { screenshots };
+           agent.messages[agent.messages.length - 1].meta = { ...agent.messages[agent.messages.length - 1].meta, screenshots };
         }
       }
 
@@ -217,7 +240,6 @@ export class AgentManager {
   private replaceLastAgentMessage(agentId: string, content: string) {
     const agent = this.agents[agentId];
     if (!agent || !agent.messages) return;
-    // replace last agent message
     for (let i = agent.messages.length - 1; i >= 0; i--) {
       if (agent.messages[i].role === "agent") {
         agent.messages[i] = { ...agent.messages[i], content, timestamp: new Date().toISOString() };
