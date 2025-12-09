@@ -7,7 +7,7 @@ import { SafetyModal, TransactionPreview } from './components/SafetyModal';
 import { ChatMessage, DashboardState, AgentType, ProcessingStep, SafetyStatus, AgentAction } from './types';
 import { MOCK_TRANSACTIONS } from './constants';
 import { detectNavigationTarget, AVAILABLE_PAGES } from './navigationMap';
-import { BrowserAutomationEngine } from './automationEngine';
+import { BrowserAutomationEngine, AutomationAction } from './automationEngine';
 import { AgentManager } from './services/agent';
 
 const INITIAL_DASHBOARD_STATE: DashboardState = {
@@ -67,6 +67,42 @@ const App: React.FC = () => {
       agentManager.setAutomationEngine(automationEngine.current);
     }
   }, [agentManager]);
+
+  // --- Automation Visualization Effects ---
+  useEffect(() => {
+    const handleActionStart = (e: CustomEvent<AutomationAction>) => {
+      const action = e.detail;
+      // Highlight based on selector or text logic
+      if (action.selector) {
+        setActiveHighlight(action.selector);
+      } else if (action.elementText) {
+        // Fallback simple highlight for text match
+        setActiveHighlight(action.elementText); 
+      }
+      
+      addStep(AgentType.EXECUTOR, 'processing', `Executing: ${action.type}`);
+    };
+
+    const handleActionEnd = (e: CustomEvent<{action: AutomationAction, result: any}>) => {
+      const { action, result } = e.detail;
+      updateLastStepStatus(result.success ? 'completed' : 'waiting_approval'); // Use waiting_approval color for fail for visibility
+      
+      // Keep highlight briefly to show success/fail
+      setTimeout(() => {
+        setActiveHighlight(null);
+      }, 500);
+    };
+
+    window.addEventListener('agent-action-start', handleActionStart as EventListener);
+    window.addEventListener('agent-action-success', handleActionEnd as EventListener);
+    window.addEventListener('agent-action-fail', handleActionEnd as EventListener);
+
+    return () => {
+      window.removeEventListener('agent-action-start', handleActionStart as EventListener);
+      window.removeEventListener('agent-action-success', handleActionEnd as EventListener);
+      window.removeEventListener('agent-action-fail', handleActionEnd as EventListener);
+    };
+  }, []);
 
   // --- Effects ---
   useEffect(() => {
@@ -208,12 +244,15 @@ const App: React.FC = () => {
 
     for (const action of actions) {
       const confidence = action.confidence || 95;
-      if (action.target) setActiveHighlight(action.target.toLowerCase());
-
-      // Delegate pure automation actions to the Engine
+      
+      // LEGACY: Delegate pure automation actions to the Engine via legacy path if needed
+      // New Agent Mode uses AgentManager -> AutomationEngine directly.
+      // This path is for the "Chat" interface usage.
+      
       const automationActions = ['SCREENSHOT', 'READ_PAGE', 'SCROLL', 'WAIT', 'VERIFY', 'HOVER', 'GET_ELEMENT_VALUE', 'WAIT_FOR_SELECTOR'];
       
       if (automationActions.includes(action.type)) {
+        // ... (legacy logic kept for compatibility with chat interface)
         addStep(AgentType.INTERPRETER, 'processing', `Executing ${action.type}...`, confidence);
         const report = await automationEngine.current.executeActions([action as any]);
         
@@ -225,25 +264,10 @@ const App: React.FC = () => {
              timestamp: new Date()
            }]);
         }
-        
-        if (action.type === 'VERIFY') {
-           const result = report.results[0];
-           if (result.success) {
-               addStep(AgentType.INTERPRETER, 'completed', result.message, 100);
-           } else {
-               addStep(AgentType.INTERPRETER, 'completed', `Verification Failed: ${result.message}`, 0);
-               console.warn("Verification failed during execution");
-           }
-        }
-        
         updateLastStepStatus('completed');
         await delay(500);
         continue;
       }
-
-      // Legacy/Hybrid handling for NAVIGATE, CLICK, FILL_INPUT
-      // We essentially map high-level AgentActions to AutomationActions if needed
-      // But for this Mock app, we keep some specific state logic 
 
       switch (action.type) {
         case 'NAVIGATE':
@@ -254,7 +278,6 @@ const App: React.FC = () => {
              targetPageId = detected?.id || 'overview';
           }
           
-          // Use automation engine to "navigate" (which dispatches event)
           addStep(AgentType.EXECUTOR, 'processing', `Navigating to ${targetPageId}...`, confidence);
           await automationEngine.current.executeActions([{
             type: 'NAVIGATE',
@@ -266,7 +289,6 @@ const App: React.FC = () => {
         case 'FILL_INPUT':
           addStep(AgentType.EXECUTOR, 'processing', `Typing "${action.value}" into ${action.target}...`, confidence);
           
-          // Try to use automation engine first to interact with DOM
           let selector = '';
           if (action.target?.includes('recipient')) selector = 'input[placeholder*="Search"]';
           if (action.target?.includes('amount')) selector = 'input[placeholder*="0.00"]';
@@ -278,7 +300,7 @@ const App: React.FC = () => {
                 value: action.value
              }]);
           } else {
-             // Fallback to state update if DOM interaction fails or for robustness
+             // Fallback
              setDashboardState(prev => {
               const field = action.target?.toLowerCase() || '';
               const newState = { ...prev.transferForm };

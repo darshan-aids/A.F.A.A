@@ -92,25 +92,25 @@ export class AgentManager {
     CONVERSATION HISTORY:
     ${(agent.messages || []).map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n")}
 
-    AVAILABLE ACTIONS (JSON):
-    - { "type": "NAVIGATE", "page": "overview|transactions|transfer" }
-    - { "type": "CLICK", "selector": "css_selector" }
-    - { "type": "FILL_INPUT", "selector": "css_selector", "value": "text" }
-    - { "type": "READ_PAGE" }
-    - { "type": "SCREENSHOT" }
-    - { "type": "WAIT_FOR_SELECTOR", "selector": "css_selector", "duration": 5000 }
-    - { "type": "SCROLL", "direction": "down", "amount": 300 }
+    AVAILABLE ACTIONS (Strict JSON format):
+    1. Navigation: { "type": "NAVIGATE", "url": "overview|transactions|transfer" }
+    2. Click: { "type": "CLICK", "selector": "css_selector", "elementText": "text_on_button" }
+    3. Input: { "type": "FILL_INPUT", "selector": "css_selector", "value": "text_to_type" }
+    4. Wait: { "type": "WAIT_FOR_SELECTOR", "selector": "css_selector" }
+    5. Scroll: { "type": "SCROLL", "direction": "down" }
+    6. Read: { "type": "READ_PAGE" }
 
     INSTRUCTIONS:
     - Return a JSON object with an "actions" array and a "summary" string.
     - Do NOT output markdown or code blocks. Just raw JSON.
+    - Use "selector" preference: ID > Placeholder > Aria-Label > Text Content.
     - If you are done, return empty actions.
     
     Example Response:
     {
       "summary": "I will navigate to transactions and search for 'Uber'.",
       "actions": [
-        { "type": "NAVIGATE", "page": "transactions" },
+        { "type": "NAVIGATE", "url": "transactions" },
         { "type": "WAIT_FOR_SELECTOR", "selector": "input[placeholder*='Search']" },
         { "type": "FILL_INPUT", "selector": "input[placeholder*='Search']", "value": "Uber" }
       ]

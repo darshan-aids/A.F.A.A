@@ -50,6 +50,7 @@ export interface AgentAction {
   type: 'NAVIGATE' | 'FILL_INPUT' | 'CLICK' | 'ANALYZE_CHART' | 'EXTRACT_DATA' | 'SCREENSHOT' | 'READ_PAGE' | 'WAIT' | 'SCROLL' | 'VERIFY' | 'HOVER' | 'GET_ELEMENT_VALUE' | 'WAIT_FOR_SELECTOR' | 'browse';
   target?: string;
   page?: string;
+  url?: string; // Added url property
   value?: string;
   description: string;
   confidence?: number;

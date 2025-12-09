@@ -19,6 +19,7 @@ export interface AutomationAction {
   type: ActionType;
   page?: string;
   url?: string;
+  target?: string;
   selector?: string;
   elementText?: string;
   value?: string;
@@ -51,14 +52,32 @@ export class BrowserAutomationEngine {
     console.log(`[AUTOMATION] Starting execution of ${actions.length} actions`);
 
     for (const action of actions) {
+      // Dispatch start event for UI visualization
+      this.dispatchLifecycleEvent('agent-action-start', action);
+      
       const result = await this.executeAction(action);
       this.actionResults.push(result);
+      
+      // Dispatch result event
+      this.dispatchLifecycleEvent(result.success ? 'agent-action-success' : 'agent-action-fail', { action, result });
+
+      if (!result.success && action.type !== 'VERIFY') {
+        // Stop chain on critical failure (except verification)
+        break; 
+      }
+      
+      // Small delay for visual continuity
+      await new Promise(r => setTimeout(r, 500));
     }
 
     return {
       results: this.actionResults,
       summary: `Executed ${this.actionResults.length} actions. ${this.actionResults.filter(r => r.success).length} successful.`
     };
+  }
+
+  private dispatchLifecycleEvent(eventName: string, detail: any) {
+    window.dispatchEvent(new CustomEvent(eventName, { detail }));
   }
 
   private async executeAction(action: AutomationAction): Promise<ActionResult> {
@@ -95,39 +114,55 @@ export class BrowserAutomationEngine {
   }
 
   private async navigate(action: AutomationAction): Promise<ActionResult> {
-    if (action.page) {
+    const target = action.page || action.url || action.target;
+    if (target) {
+      // Normalize target to ID for mock SPA navigation
+      const pageId = target.toLowerCase().replace('/', '').trim();
+      
       // Dispatch event for App.tsx to handle state change
-      window.dispatchEvent(new CustomEvent('agent-navigate', { detail: { page: action.page } }));
-      return { type: 'NAVIGATE', success: true, timestamp: new Date().toISOString(), message: `Navigated to ${action.page}` };
+      window.dispatchEvent(new CustomEvent('agent-navigate', { detail: { page: pageId } }));
+      return { type: 'NAVIGATE', success: true, timestamp: new Date().toISOString(), message: `Navigated to ${pageId}` };
     }
     return { type: 'NAVIGATE', success: false, timestamp: new Date().toISOString(), message: 'No page specified' };
   }
 
   private async click(action: AutomationAction): Promise<ActionResult> {
-    const el = this.findElement(action);
+    const el = this.findElementBestEffort(action);
     if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      await new Promise(r => setTimeout(r, 200)); // wait for scroll
       el.click();
       return { type: 'CLICK', success: true, timestamp: new Date().toISOString(), message: `Clicked element` };
     }
-    return { type: 'CLICK', success: false, timestamp: new Date().toISOString(), message: 'Element not found' };
+    return { type: 'CLICK', success: false, timestamp: new Date().toISOString(), message: `Element not found: ${action.selector || action.elementText}` };
   }
 
   private async fillInput(action: AutomationAction): Promise<ActionResult> {
-    const el = this.findElement(action) as HTMLInputElement;
+    const el = this.findElementBestEffort(action) as HTMLInputElement | HTMLTextAreaElement;
+    
     if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
-      // React Hack to trigger onChange
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
-      if (nativeInputValueSetter) {
-        nativeInputValueSetter.call(el, action.value || '');
+      el.focus();
+      const valueToSet = action.value || '';
+      
+      // React Hack: React overrides the native setter, so we have to call the prototype setter
+      const prototype = el.tagName === 'TEXTAREA' 
+          ? window.HTMLTextAreaElement.prototype 
+          : window.HTMLInputElement.prototype;
+          
+      const nativeSetter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+      
+      if (nativeSetter) {
+        nativeSetter.call(el, valueToSet);
       } else {
-        el.value = action.value || '';
+        el.value = valueToSet;
       }
+      
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
       
-      return { type: 'FILL_INPUT', success: true, timestamp: new Date().toISOString(), message: `Filled input with "${action.value}"` };
+      return { type: 'FILL_INPUT', success: true, timestamp: new Date().toISOString(), message: `Filled input with "${valueToSet}"` };
     }
-    return { type: 'FILL_INPUT', success: false, timestamp: new Date().toISOString(), message: 'Input not found' };
+    return { type: 'FILL_INPUT', success: false, timestamp: new Date().toISOString(), message: `Input not found: ${action.selector}` };
   }
 
   private async readPage(action: AutomationAction): Promise<ActionResult> {
@@ -142,7 +177,7 @@ export class BrowserAutomationEngine {
 
   private async scroll(action: AutomationAction): Promise<ActionResult> {
     try {
-      const el = this.findElement(action);
+      const el = this.findElementBestEffort(action);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return { type: 'SCROLL', success: true, timestamp: new Date().toISOString(), message: 'Scrolled element into view' };
@@ -190,7 +225,7 @@ export class BrowserAutomationEngine {
   }
 
   private async hover(action: AutomationAction): Promise<ActionResult> {
-    const el = this.findElement(action);
+    const el = this.findElementBestEffort(action);
     if (el) {
       el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
       el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
@@ -200,7 +235,7 @@ export class BrowserAutomationEngine {
   }
 
   private async getElementValue(action: AutomationAction): Promise<ActionResult> {
-    const el = this.findElement(action);
+    const el = this.findElementBestEffort(action);
     if (!el) {
       return { type: 'GET_ELEMENT_VALUE', success: false, timestamp: new Date().toISOString(), message: 'Element not found' };
     }
@@ -226,7 +261,7 @@ export class BrowserAutomationEngine {
     const start = Date.now();
     
     while (Date.now() - start < timeout) {
-      const el = this.findElement(action);
+      const el = this.findElementBestEffort(action);
       if (el) {
          return { type: 'WAIT_FOR_SELECTOR', success: true, timestamp: new Date().toISOString(), message: 'Element appeared' };
       }
@@ -238,22 +273,55 @@ export class BrowserAutomationEngine {
 
   // --- Helpers ---
 
-  private findElement(action: AutomationAction): HTMLElement | null {
-    if (action.selector) return document.querySelector(action.selector) as HTMLElement;
-    if (action.elementText) return this.findElementByText(action.elementText);
-    return null;
-  }
-
-  private findElementByText(text: string): HTMLElement | null {
-    // Simple robust text finder using XPath
-    const xpath = `//*[contains(text(), '${text}')]`;
-    try {
-      const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-      return result.singleNodeValue as HTMLElement;
-    } catch (e) {
-      console.warn("XPath evaluation failed", e);
-      return null;
+  // Strategy: Selector -> ID -> Text (XPath) -> Aria Label
+  private findElementBestEffort(action: AutomationAction): HTMLElement | null {
+    // 1. Explicit Selector
+    if (action.selector) {
+      try {
+        const el = document.querySelector(action.selector);
+        if (el) return el as HTMLElement;
+      } catch (e) {
+        console.warn(`Invalid selector: ${action.selector}`);
+      }
     }
+
+    // 2. Text Search (Fuzzy or XPath)
+    if (action.elementText) {
+      // Try XPath first (Case insensitive attempt)
+      const cleanText = action.elementText.replace(/'/g, "\\'"); // Basic escape
+      const xpath = `//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '${cleanText.toLowerCase()}')]`;
+      
+      try {
+        const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+        if (result.singleNodeValue) return result.singleNodeValue as HTMLElement;
+      } catch (e) {
+        console.warn("XPath evaluation failed", e);
+      }
+      
+      // Fallback: Scan buttons and inputs for value/label match
+      const interactables = Array.from(document.querySelectorAll('button, a, input, [role="button"]'));
+      const match = interactables.find(el => {
+         const content = (el.textContent || '').toLowerCase();
+         const val = ((el as HTMLInputElement).value || '').toLowerCase();
+         const label = (el.getAttribute('aria-label') || '').toLowerCase();
+         const search = action.elementText!.toLowerCase();
+         return content.includes(search) || val.includes(search) || label.includes(search);
+      });
+      if (match) return match as HTMLElement;
+    }
+
+    // 3. Last Resort: Target Property used as ID or Placeholder
+    if (action.target) {
+       // Try as ID
+       const elById = document.getElementById(action.target);
+       if (elById) return elById;
+       
+       // Try as Placeholder (for inputs)
+       const elByPlaceholder = document.querySelector(`input[placeholder*="${action.target}"]`);
+       if (elByPlaceholder) return elByPlaceholder as HTMLElement;
+    }
+
+    return null;
   }
 
   private getPageStructure(): any {
@@ -263,7 +331,8 @@ export class BrowserAutomationEngine {
       tag: el.tagName,
       text: el.textContent?.trim().substring(0, 50),
       label: el.getAttribute('aria-label'),
-      id: el.id
+      id: el.id,
+      className: el.className
     }));
   }
 }
