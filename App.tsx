@@ -51,6 +51,9 @@ const App: React.FC = () => {
   const [transactionPreview, setTransactionPreview] = useState<TransactionPreview | undefined>(undefined);
   const [showSafetyModal, setShowSafetyModal] = useState(false);
 
+  // Mobile View State
+  const [mobileTab, setMobileTab] = useState<'agent' | 'dashboard'>('dashboard');
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const liveRegionRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -106,8 +109,10 @@ const App: React.FC = () => {
 
   // --- Effects ---
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, agentSteps]);
+    if (mobileTab === 'agent') {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, agentSteps, mobileTab]);
 
   // Handle Automation Navigation Events
   useEffect(() => {
@@ -121,6 +126,11 @@ const App: React.FC = () => {
           currentPage: targetPage.id as DashboardState['currentPage']
         }));
         console.log(`[App] Agent triggered navigation to ${targetPage.displayName}`);
+        
+        // Auto-switch to dashboard on mobile when navigation occurs
+        if (window.innerWidth < 768) {
+          setMobileTab('dashboard');
+        }
       }
     };
 
@@ -134,10 +144,14 @@ const App: React.FC = () => {
       if ((e.ctrlKey || e.metaKey) && e.key === 't') {
         e.preventDefault();
         manualMode ? setDashboardState(prev => ({ ...prev, currentPage: 'transfer' })) : setInputValue("I want to make a transfer");
+        // Ensure visibility on mobile
+        if (!manualMode && window.innerWidth < 768) setMobileTab('agent');
+        if (manualMode && window.innerWidth < 768) setMobileTab('dashboard');
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
         e.preventDefault();
         setInputValue("Go to dashboard");
+        if (window.innerWidth < 768) setMobileTab('agent');
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'm') {
         e.preventDefault();
@@ -191,11 +205,14 @@ const App: React.FC = () => {
   const handleFileUpload = (file: File) => {
     setDashboardState(prev => ({ ...prev, uploadedFile: file }));
     setInputValue("Analyze this uploaded document");
+    if (window.innerWidth < 768) setMobileTab('agent');
   };
 
-  const handleSendMessage = async () => {
-    if (!inputValue.trim() || isProcessing) return;
-    const userMsg: ChatMessage = { id: Date.now().toString(), sender: AgentType.USER, content: inputValue, timestamp: new Date() };
+  const handleSendMessage = async (overrideContent?: string) => {
+    const content = overrideContent || inputValue;
+    if (!content.trim() || isProcessing) return;
+    
+    const userMsg: ChatMessage = { id: Date.now().toString(), sender: AgentType.USER, content: content, timestamp: new Date() };
     setMessages(prev => [...prev, userMsg]);
     setInputValue('');
     setIsProcessing(true);
@@ -238,6 +255,13 @@ const App: React.FC = () => {
     }
   };
 
+  const handleManualAction = async (action: AgentAction) => {
+      // Execute a single action manually via the engine
+      setIsProcessing(true);
+      await executeActionSequence([action]);
+      setIsProcessing(false);
+  };
+
   const executeActionSequence = async (actions: AgentAction[]) => {
     if (!actions || !Array.isArray(actions)) return;
     setSystemStatus('PROCESSING');
@@ -246,7 +270,7 @@ const App: React.FC = () => {
       const confidence = action.confidence || 95;
       
       // LEGACY: Delegate pure automation actions to the Engine via legacy path if needed
-      const automationActions = ['SCREENSHOT', 'READ_PAGE', 'SCROLL', 'WAIT', 'VERIFY', 'HOVER', 'GET_ELEMENT_VALUE', 'WAIT_FOR_SELECTOR'];
+      const automationActions = ['SCREENSHOT', 'READ_PAGE', 'SCROLL', 'WAIT', 'VERIFY', 'HOVER', 'GET_ELEMENT_VALUE', 'WAIT_FOR_SELECTOR', 'BROWSE'];
       
       if (automationActions.includes(action.type)) {
         addStep(AgentType.INTERPRETER, 'processing', `Executing ${action.type}...`, confidence);
@@ -388,11 +412,37 @@ const App: React.FC = () => {
   const getStatusColor = (s: string) => s === 'PROCESSING' ? 'text-brand-cyan' : s === 'WAITING_APPROVAL' ? 'text-brand-orange' : 'text-brand-mint';
 
   return (
-    <div className="flex h-screen w-screen bg-brand-dark overflow-hidden font-sans text-slate-200">
+    <div className="flex h-[100dvh] w-screen bg-brand-dark overflow-hidden font-sans text-slate-200 flex-col md:flex-row relative">
       <div className="sr-only" role="status" aria-live="polite" ref={liveRegionRef}></div>
 
-      {/* LEFT PANEL */}
-      <div className="w-1/3 min-w-[400px] border-r border-[#25252b] flex flex-col bg-brand-dark z-10 relative">
+      {/* MOBILE BOTTOM NAV */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-[#1C1C21] border-t border-[#25252b] z-[60] flex items-center justify-around pb-1 shadow-[0_-5px_20px_rgba(0,0,0,0.5)]">
+         <button 
+           onClick={() => setMobileTab('agent')}
+           className={`flex flex-col items-center justify-center gap-1 w-full h-full active:scale-95 transition-all ${mobileTab === 'agent' ? 'text-brand-cyan' : 'text-slate-500'}`}
+         >
+           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-4 4v-4z" />
+           </svg>
+           <span className="text-[10px] font-bold uppercase tracking-wider">Agent</span>
+         </button>
+         <div className="w-[1px] h-8 bg-[#25252b]"></div>
+         <button 
+           onClick={() => setMobileTab('dashboard')}
+           className={`flex flex-col items-center justify-center gap-1 w-full h-full active:scale-95 transition-all ${mobileTab === 'dashboard' ? 'text-brand-lime' : 'text-slate-500'}`}
+         >
+           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+           </svg>
+           <span className="text-[10px] font-bold uppercase tracking-wider">Dashboard</span>
+         </button>
+      </div>
+
+      {/* LEFT PANEL (AGENT) */}
+      <div className={`
+        w-full md:w-1/3 md:min-w-[400px] border-r border-[#25252b] flex-col bg-brand-dark z-10 relative transition-all duration-300
+        ${mobileTab === 'agent' ? 'flex h-[calc(100dvh-64px)] md:h-full' : 'hidden md:flex'}
+      `}>
         <div className="p-5 border-b border-[#25252b] bg-brand-dark/95 flex flex-col gap-3 backdrop-blur-sm">
           <div className="flex justify-between items-start">
             <div>
@@ -405,7 +455,7 @@ const App: React.FC = () => {
             </div>
           </div>
           <div className="flex justify-between items-center mt-2">
-            <div className="flex gap-2 text-[10px] text-slate-500 font-mono">
+            <div className="flex gap-2 text-[10px] text-slate-500 font-mono hidden sm:flex">
               <span className="bg-[#1C1C21] px-1.5 py-0.5 rounded border border-[#25252b]">Ctrl+T Transfer</span>
               <span className="bg-[#1C1C21] px-1.5 py-0.5 rounded border border-[#25252b]">Ctrl+D Dashboard</span>
             </div>
@@ -437,15 +487,18 @@ const App: React.FC = () => {
              <div className="p-4 border-t border-[#25252b] bg-[#0F0F12]">
                <div className="flex gap-2 relative">
                  <input ref={inputRef} type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Type commands..." className="flex-1 bg-[#1C1C21] border border-[#25252b] text-slate-200 rounded-lg p-3 text-sm focus:border-brand-cyan focus:outline-none" disabled={isProcessing} />
-                 <button onClick={handleSendMessage} disabled={isProcessing} className="bg-brand-cyan hover:bg-cyan-400 text-slate-900 px-5 py-2 rounded-lg text-sm font-bold transition-all">{isProcessing ? '...' : 'SEND'}</button>
+                 <button onClick={() => handleSendMessage()} disabled={isProcessing} className="bg-brand-cyan hover:bg-cyan-400 text-slate-900 px-5 py-2 rounded-lg text-sm font-bold transition-all">{isProcessing ? '...' : 'SEND'}</button>
                </div>
              </div>
            )}
         </div>
       </div>
 
-      {/* RIGHT PANEL */}
-      <div className="flex-1 bg-brand-dark flex flex-col relative" aria-hidden={isScanning}>
+      {/* RIGHT PANEL (DASHBOARD) */}
+      <div className={`
+        flex-1 bg-brand-dark flex-col relative transition-all duration-300
+        ${mobileTab === 'dashboard' ? 'flex h-[calc(100dvh-64px)] md:h-full' : 'hidden md:flex'}
+      `} aria-hidden={isScanning}>
         <div className="bg-[#1C1C21] p-2 flex items-center gap-3 text-xs text-slate-400 border-b border-[#25252b]">
            <div className="flex gap-1.5 ml-2"><div className="w-2.5 h-2.5 rounded-full bg-red-500/20"></div><div className="w-2.5 h-2.5 rounded-full bg-yellow-500/20"></div><div className="w-2.5 h-2.5 rounded-full bg-green-500/20"></div></div>
            <div className="bg-[#0F0F12] px-4 py-1.5 rounded flex-1 text-center font-mono opacity-60 truncate border border-[#25252b] text-[10px]">https://portal.darlene.demo/dashboard/{dashboardState.currentPage}</div>
@@ -463,6 +516,9 @@ const App: React.FC = () => {
             formErrors={formErrors} 
             isSubmittingTransfer={isSubmittingTransfer}
             agentManager={agentManager}
+            agentSteps={agentSteps}
+            onSendMessage={handleSendMessage}
+            onManualAction={handleManualAction}
           />
         </div>
       </div>

@@ -41,21 +41,18 @@ export const processUserRequest = async (
       Current Visual Context (JSON): ${JSON.stringify(screenContext)}
       
       Instructions:
-      1. Use the "visible_data" to answer questions accurately.
-      2. If navigating, set target to one of the available pages: overview, transfer, transactions, reports, agent-mode.
-      3. If filling a form, use targets 'recipient', 'amount', 'note'.
-      4. BROWSER AUTOMATION TOOLS AVAILABLE:
-         - "SCREENSHOT": Take a visual snapshot of the current state.
-         - "READ_PAGE": Scan the DOM for accessibility structure.
-         - "NAVIGATE": Go to a specific page.
-         - "FILL_INPUT": Type into a field.
-         - "SCROLL": Scroll the page (direction: 'up'/'down', amount: px).
-         - "WAIT": Pause execution (duration: ms).
-         - "VERIFY": Check if specific text exists on the page.
-         - "HOVER": Simulate mouse hover over an element.
-         - "GET_ELEMENT_VALUE": Read text/value from a specific element.
-      5. If the user wants to transfer money, YOU MUST set safety to "REQUIRE_CONFIRMATION".
-      6. Assign a confidence score (0-100) to actions.
+      1. Use "visible_data" to answer questions.
+      2. WORKFLOW MAPPING:
+         - "Transfer to [Name]": NAVIGATE 'transfer' -> FILL_INPUT 'recipient' [Name] -> FILL_INPUT 'amount'.
+         - "Pay Electricity Bill" or "Pay Bill": NAVIGATE 'transfer' -> FILL_INPUT 'recipient' "Utility Co" -> FILL_INPUT 'note' "Electricity Bill".
+         - "Invest in Gold" or "Buy Digital Gold": NAVIGATE 'transfer' -> FILL_INPUT 'recipient' "Gold Vault" -> FILL_INPUT 'note' "Investment".
+         - "Download Tax Docs": NAVIGATE 'reports' -> CLICK "2024 Tax Documents".
+      3. BROWSER TOOLS:
+         - "NAVIGATE": Go to a page (overview, transfer, transactions, reports, agent-mode, profile).
+         - "FILL_INPUT": key targets are 'recipient', 'amount', 'note'.
+         - "CLICK": target buttons or links.
+      4. SAFETY: If the user wants to move money (transfer, pay, invest), set safety to "REQUIRE_CONFIRMATION".
+      5. CONFIDENCE: Score 0-100 based on ambiguity.
     `;
 
     if (config?.simpleMode) {
@@ -67,25 +64,21 @@ export const processUserRequest = async (
     }
 
     prompt += `
-      Return a JSON object with the following structure:
+      Return a JSON object:
       {
-        "message": "Natural language response to user",
-        "thoughtProcess": ["Step 1: reason...", "Step 2: reason..."],
+        "message": "Natural language response describing what you are doing",
+        "thoughtProcess": ["Step 1: Identify intent...", "Step 2: Map to action..."],
         "safety": "SAFE" | "WARNING" | "REQUIRE_CONFIRMATION",
         "actions": [
           {
             "type": "NAVIGATE" | "FILL_INPUT" | "CLICK" | "ANALYZE_CHART" | "SCREENSHOT" | "READ_PAGE" | "SCROLL" | "WAIT" | "VERIFY" | "HOVER" | "GET_ELEMENT_VALUE",
-            "page": "overview" | "transactions" | "transfer" | "reports" | "agent-mode",
-            "target": "field/button/page name",
-            "value": "value to fill if applicable",
-            "description": "Short description of action",
-            "confidence": 95,
-            "elementText": "Text of element to click/interact with",
-            "selector": "CSS selector if known",
-            "amount": 100,
-            "direction": "down",
-            "duration": 1000,
-            "expectedText": "Text to verify"
+            "page": "string",
+            "target": "string",
+            "value": "string",
+            "description": "string",
+            "confidence": number,
+            "elementText": "string",
+            "selector": "string"
           }
         ]
       }

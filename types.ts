@@ -34,7 +34,7 @@ export interface Transaction {
 }
 
 export interface DashboardState {
-  currentPage: 'overview' | 'transfer' | 'settings' | 'transactions' | 'reports' | 'agent-mode';
+  currentPage: 'overview' | 'transfer' | 'settings' | 'transactions' | 'reports' | 'agent-mode' | 'profile';
   balance: number;
   transferForm: {
     recipient: string;
