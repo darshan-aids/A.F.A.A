@@ -9,6 +9,41 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 type Subscriber = { unsubscribe: () => void };
 
+function normalizeActions(actions: any[]): any[] {
+  return (actions || []).map((a) => {
+    const clone = { ...a };
+
+    // Support planners that use "url" for SPA page keys or full URLs
+    if (clone.url && !clone.page) {
+      // If the url looks like a short page id (no protocol), treat it as page
+      if (/^[a-z0-9-_]+$/i.test(String(clone.url))) {
+        clone.page = String(clone.url);
+      } else {
+        // keep full urls on a url field, but also set page for SPA routing if possible
+        clone.page = clone.page || null;
+      }
+    }
+
+    // Normalize common synonyms
+    if (!clone.selector && clone.elementSelector) clone.selector = clone.elementSelector;
+    if (!clone.selector && clone.elementText && typeof clone.elementText === 'string') {
+      // prefer selector, but keep elementText for fallback
+      clone.selector = clone.selector || undefined;
+    }
+
+    // Normalize target -> selector/target
+    if (!clone.selector && clone.target && clone.target.includes('input')) {
+      // leave target, will be processed by App as a semantic target
+      clone.selector = clone.selector || undefined;
+    }
+
+    // Ensure type is uppercase for consistent comparisons
+    if (clone.type && typeof clone.type === 'string') clone.type = clone.type.toUpperCase();
+
+    return clone;
+  });
+}
+
 export class AgentManager {
   private agents: Record<string, Agent> = {};
   private subs: ((agents: Agent[]) => void)[] = [];
@@ -138,7 +173,10 @@ export class AgentManager {
         return;
       }
 
-      const { summary, actions } = parsed;
+      const { summary, actions: rawActions } = parsed;
+      
+      // Normalize actions to ensure consistent execution
+      const actions = normalizeActions(rawActions);
 
       // Update the "Thinking..." message with the summary
       this.replaceLastAgentMessage(agentId, summary || "Executing actions...");

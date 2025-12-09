@@ -114,16 +114,41 @@ export class BrowserAutomationEngine {
   }
 
   private async navigate(action: AutomationAction): Promise<ActionResult> {
-    const target = action.page || action.url || action.target;
-    if (target) {
-      // Normalize target to ID for mock SPA navigation
-      const pageId = target.toLowerCase().replace('/', '').trim();
-      
-      // Dispatch event for App.tsx to handle state change
-      window.dispatchEvent(new CustomEvent('agent-navigate', { detail: { page: pageId } }));
-      return { type: 'NAVIGATE', success: true, timestamp: new Date().toISOString(), message: `Navigated to ${pageId}` };
+    const timestamp = new Date().toISOString();
+    try {
+        // SPA via Page ID (Explicit page field or simple string in url)
+        if (action.page && !/^https?:\/\//i.test(action.page)) {
+             window.dispatchEvent(new CustomEvent('agent-navigate', { detail: { page: action.page } }));
+             return { type: 'NAVIGATE', success: true, timestamp, message: `Navigated to ${action.page}` };
+        }
+        
+        // SPA via Short URL (e.g. "transactions" or "/transactions")
+        if (action.url && !/^https?:\/\//i.test(action.url)) {
+             const pageId = action.url.toLowerCase().replace('/', '').trim();
+             window.dispatchEvent(new CustomEvent('agent-navigate', { detail: { page: pageId } }));
+             return { type: 'NAVIGATE', success: true, timestamp, message: `Navigated to ${pageId}` };
+        }
+
+        // Full URL navigation
+        if (action.url && /^https?:\/\//i.test(action.url)) {
+            // For this mock application, we simulate external navigation or log it.
+            // In a real browser agent, this would be: window.location.href = action.url;
+            console.log(`[Automation] External navigation requested to ${action.url}`);
+            return { type: 'NAVIGATE', success: true, timestamp, message: `Mock: Navigated to external URL ${action.url}` };
+        }
+        
+        // Fallback target property
+        if (action.target) {
+           const pageId = action.target.toLowerCase().replace('/', '').trim();
+           window.dispatchEvent(new CustomEvent('agent-navigate', { detail: { page: pageId } }));
+           return { type: 'NAVIGATE', success: true, timestamp, message: `Navigated to ${pageId}` };
+        }
+        
+        return { type: 'NAVIGATE', success: false, timestamp, message: 'No valid page or url specified' };
+
+    } catch (e) {
+        return { type: 'NAVIGATE', success: false, timestamp, message: 'Navigation error', error: String(e) };
     }
-    return { type: 'NAVIGATE', success: false, timestamp: new Date().toISOString(), message: 'No page specified' };
   }
 
   private async click(action: AutomationAction): Promise<ActionResult> {

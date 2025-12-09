@@ -252,7 +252,6 @@ const App: React.FC = () => {
       const automationActions = ['SCREENSHOT', 'READ_PAGE', 'SCROLL', 'WAIT', 'VERIFY', 'HOVER', 'GET_ELEMENT_VALUE', 'WAIT_FOR_SELECTOR'];
       
       if (automationActions.includes(action.type)) {
-        // ... (legacy logic kept for compatibility with chat interface)
         addStep(AgentType.INTERPRETER, 'processing', `Executing ${action.type}...`, confidence);
         const report = await automationEngine.current.executeActions([action as any]);
         
@@ -271,8 +270,14 @@ const App: React.FC = () => {
 
       switch (action.type) {
         case 'NAVIGATE':
-          // Enhanced logic using detecting
-          let targetPageId = action.page?.toLowerCase() || action.target?.toLowerCase() || '';
+          // Enhanced logic using detecting: check page, target, AND url
+          let targetPageId = (action.page || action.target || action.url || '').toString().toLowerCase().trim();
+          
+          if (targetPageId.startsWith('http') || targetPageId.includes('/')) {
+             const detected = detectNavigationTarget(action.description || action.url || '');
+             targetPageId = detected?.id || targetPageId;
+          }
+
           if (!targetPageId) {
              const detected = detectNavigationTarget(action.description || '');
              targetPageId = detected?.id || 'overview';
@@ -281,7 +286,8 @@ const App: React.FC = () => {
           addStep(AgentType.EXECUTOR, 'processing', `Navigating to ${targetPageId}...`, confidence);
           await automationEngine.current.executeActions([{
             type: 'NAVIGATE',
-            page: targetPageId
+            page: targetPageId,
+            url: action.url // Pass original URL if needed by engine
           }]);
           updateLastStepStatus('completed');
           break;
