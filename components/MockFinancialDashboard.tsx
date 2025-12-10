@@ -1,6 +1,9 @@
 
 import React, { useRef, useEffect, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  LineChart, Line, AreaChart, Area
+} from 'recharts';
 import { DashboardState, ProcessingStep, AgentAction } from '../types';
 import { MOCK_CHART_DATA } from '../constants';
 import { AgentMode } from './AgentMode';
@@ -194,68 +197,26 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
           {/* Notification Popup */}
           {showNotifications && (
             <div className="absolute top-14 right-0 md:right-16 w-80 md:w-96 bg-[#1C1C21] border border-[#25252b] rounded-2xl shadow-2xl z-50 overflow-hidden animate-[fadeIn_0.2s_ease-out] text-slate-200 ring-1 ring-white/10 origin-top-right">
-              {/* Header */}
               <div className="p-4 border-b border-[#25252b] flex justify-between items-center bg-[#1C1C21]">
                   <h3 className="font-bold text-base text-white">AI Notification Center</h3>
                   <button className="text-xs font-medium text-slate-400 hover:text-white border border-[#333] hover:border-[#555] px-2 py-1 rounded transition-colors">See All</button>
               </div>
-              {/* Tabs */}
               <div className="px-4 py-2 bg-[#151518] flex gap-2 text-xs font-medium border-b border-[#25252b]">
                   <button className="px-3 py-1 bg-[#25252b] rounded-md shadow-sm text-white border border-[#333]">Today</button>
                   <button className="px-3 py-1 text-slate-500 hover:text-slate-300 hover:bg-[#1C1C21] rounded-md transition-colors">This Week</button>
-                  <button className="px-3 py-1 text-slate-500 hover:text-slate-300 hover:bg-[#1C1C21] rounded-md transition-colors">Earlier</button>
               </div>
-              {/* List */}
               <div className="max-h-[24rem] overflow-y-auto bg-[#1C1C21] scrollbar-thin scrollbar-thumb-slate-700">
-                  {/* Item 1 */}
                   <div className="p-4 border-b border-[#25252b] hover:bg-[#25252b]/50 transition-colors cursor-pointer group">
                       <div className="flex gap-3">
                           <div className="w-9 h-9 rounded-full bg-[#151518] border border-[#25252b] shadow-sm flex items-center justify-center text-slate-400 flex-shrink-0 group-hover:border-slate-600 transition-colors">
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                              </svg>
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
                           </div>
                           <div className="flex-1">
                               <div className="flex justify-between items-start mb-1">
                                   <h4 className="text-sm font-bold text-slate-200 group-hover:text-white transition-colors">Your AI Just Got Smarter</h4>
                                   <span className="text-[10px] text-slate-500 font-mono">1h ago</span>
                               </div>
-                              <p className="text-xs text-slate-400 leading-relaxed group-hover:text-slate-300">Adaptive learning speed increased by 27%. New feature: AI-driven trend forecasting</p>
-                          </div>
-                      </div>
-                  </div>
-                  {/* Item 2 */}
-                  <div className="p-4 border-b border-[#25252b] hover:bg-[#25252b]/50 transition-colors cursor-pointer group">
-                      <div className="flex gap-3">
-                          <div className="w-9 h-9 rounded-full bg-[#151518] border border-[#25252b] shadow-sm flex items-center justify-center text-slate-400 flex-shrink-0 group-hover:border-slate-600 transition-colors">
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
-                              </svg>
-                          </div>
-                          <div className="flex-1">
-                              <div className="flex justify-between items-start mb-1">
-                                  <h4 className="text-sm font-bold text-slate-200 group-hover:text-white transition-colors">Data Analysis Completed</h4>
-                                  <span className="text-[10px] text-slate-500 font-mono">3h ago</span>
-                              </div>
-                              <p className="text-xs text-slate-400 leading-relaxed group-hover:text-slate-300">Your AI has processed <span className="font-bold text-slate-300">10,000+ records</span> and identified key trends.</p>
-                          </div>
-                      </div>
-                  </div>
-                  {/* Item 3 */}
-                  <div className="p-4 hover:bg-[#25252b]/50 transition-colors cursor-pointer group">
-                      <div className="flex gap-3">
-                          <div className="w-9 h-9 rounded-full bg-[#151518] border border-[#25252b] shadow-sm flex items-center justify-center text-slate-400 flex-shrink-0 group-hover:border-slate-600 transition-colors">
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              </svg>
-                          </div>
-                          <div className="flex-1">
-                              <div className="flex justify-between items-start mb-1">
-                                  <h4 className="text-sm font-bold text-slate-200 group-hover:text-white transition-colors">System Maintenance</h4>
-                                  <span className="text-[10px] text-slate-500 font-mono">5h ago</span>
-                              </div>
-                              <p className="text-xs text-slate-400 leading-relaxed group-hover:text-slate-300">Performance tuning & security updates will be applied at <span className="font-bold text-slate-300">2:00 AM UTC</span></p>
+                              <p className="text-xs text-slate-400 leading-relaxed group-hover:text-slate-300">Adaptive learning speed increased by 27%.</p>
                           </div>
                       </div>
                   </div>
@@ -285,7 +246,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
             </h1>
           </div>
 
-          {/* QUICK ACTIONS ROW (For Demo Workflows) */}
+          {/* QUICK ACTIONS ROW */}
           <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
              <button 
                onClick={() => { onNavigate?.('transfer'); onFormFieldChange?.('note', 'Electricity Bill'); }}
@@ -420,6 +381,152 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
               </div>
             </div>
           </div>
+          
+          {/* Main Financial Overview Chart */}
+          <div className="bg-brand-card p-6 md:p-8 rounded-[2rem] border border-[#25252b] relative group hover:border-slate-700 transition-colors">
+             <div className="flex justify-between items-center mb-6">
+                <h3 className="text-lg md:text-xl font-bold text-white flex items-center gap-2">
+                   Financial Overview
+                   <span className="text-xs font-normal text-slate-500 bg-[#25252b] px-2 py-1 rounded-full">YTD 2024</span>
+                </h3>
+                <div className="flex gap-2">
+                   <div className="flex items-center gap-2 text-xs text-slate-400">
+                      <span className="w-3 h-3 rounded-full bg-brand-lime"></span> Revenue
+                   </div>
+                </div>
+             </div>
+             
+             <div className="h-64 md:h-80 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                   <AreaChart data={MOCK_CHART_DATA} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#D2F159" stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor="#D2F159" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#333" />
+                      <XAxis 
+                         dataKey="name" 
+                         axisLine={false} 
+                         tickLine={false} 
+                         tick={{fill: '#94a3b8', fontSize: 12}} 
+                         dy={10}
+                      />
+                      <YAxis 
+                         axisLine={false} 
+                         tickLine={false} 
+                         tick={{fill: '#94a3b8', fontSize: 12}} 
+                         tickFormatter={(value) => `$${value}`}
+                      />
+                      <Tooltip 
+                         contentStyle={{backgroundColor: '#1C1C21', border: '1px solid #333', borderRadius: '12px', boxShadow: '0 10px 40px rgba(0,0,0,0.5)'}}
+                         itemStyle={{color: '#D2F159'}}
+                         cursor={{stroke: '#333', strokeDasharray: '5 5'}}
+                         formatter={(value: number) => [`$${value.toLocaleString()}`, 'Revenue']}
+                      />
+                      <Area 
+                         type="monotone" 
+                         dataKey="revenue" 
+                         stroke="#D2F159" 
+                         strokeWidth={3}
+                         fillOpacity={1} 
+                         fill="url(#colorRevenue)" 
+                         activeDot={{r: 6, strokeWidth: 0, fill: '#fff'}}
+                      />
+                   </AreaChart>
+                </ResponsiveContainer>
+             </div>
+          </div>
+
+          {/* New Analytics Section */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+            
+            {/* Analytics Line Chart (Dark) */}
+            <div className="bg-brand-card p-6 md:p-8 rounded-[2rem] border border-[#25252b] relative group hover:border-slate-700 transition-colors flex flex-col h-80">
+               <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Analytics</h3>
+                    <div className="text-3xl font-bold text-white">4K+</div>
+                  </div>
+                  <div className="p-2 bg-[#25252b] rounded-full">
+                     <svg className="w-5 h-5 text-brand-lime" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
+                  </div>
+               </div>
+               <div className="flex-1 min-h-0 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                     <LineChart data={[
+                        { name: 'Jan', value: 1200 },
+                        { name: 'Feb', value: 2100 },
+                        { name: 'Mar', value: 1800 },
+                        { name: 'Apr', value: 3200 },
+                        { name: 'May', value: 4800 },
+                        { name: 'Jun', value: 2400 },
+                        { name: 'Jul', value: 2800 },
+                     ]}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#333" />
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 10}} dy={10} hide />
+                        <Tooltip 
+                           contentStyle={{backgroundColor: '#1C1C21', border: '1px solid #333', borderRadius: '8px'}}
+                           itemStyle={{color: '#D2F159'}}
+                           cursor={{stroke: '#333'}}
+                        />
+                        <Line type="monotone" dataKey="value" stroke="#D2F159" strokeWidth={3} dot={{r: 4, fill: '#1C1C21', stroke: '#D2F159', strokeWidth: 2}} activeDot={{r: 6}} />
+                     </LineChart>
+                  </ResponsiveContainer>
+               </div>
+               <div className="flex justify-between mt-2 text-[10px] text-slate-500 font-mono uppercase">
+                  <span>Jan-Mar</span>
+                  <span>Apr-Jun</span>
+                  <span>Jul-Sep</span>
+                  <span>Oct-Dec</span>
+               </div>
+            </div>
+
+            {/* Analytics Bar Chart (Orange) */}
+            <div className="bg-brand-orange p-6 md:p-8 rounded-[2rem] border border-brand-orange relative group shadow-[0_10px_40px_rgba(255,107,53,0.2)] flex flex-col h-80">
+               <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className="text-xs font-bold text-black/60 uppercase tracking-widest mb-1">Analytics</h3>
+                    <div className="text-3xl font-bold text-black">5K+</div>
+                  </div>
+                  <button className="px-3 py-1 bg-black/10 rounded-full text-[10px] font-bold text-black hover:bg-black/20 transition-colors flex items-center gap-1">
+                     This Week <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                  </button>
+               </div>
+               <div className="flex-1 min-h-0 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                     <BarChart data={[
+                        { day: 'Sat', value: 2000 },
+                        { day: 'Sun', value: 1200 },
+                        { day: 'Mon', value: 4000 },
+                        { day: 'Tue', value: 2500 },
+                        { day: 'Wed', value: 6000 },
+                        { day: 'Thu', value: 3000 },
+                        { day: 'Fri', value: 4500 },
+                     ]} barSize={12}>
+                        <Tooltip 
+                           contentStyle={{backgroundColor: '#000', border: 'none', borderRadius: '8px', color: '#fff'}}
+                           itemStyle={{color: '#fff'}}
+                           cursor={{fill: 'rgba(0,0,0,0.1)'}}
+                        />
+                        <Bar dataKey="value" fill="#1C1C21" radius={[10, 10, 10, 10]} />
+                     </BarChart>
+                  </ResponsiveContainer>
+               </div>
+               <div className="flex justify-between mt-2 text-[10px] text-black/60 font-mono uppercase px-2">
+                  <span>Sat</span>
+                  <span>Sun</span>
+                  <span>Mon</span>
+                  <span>Tue</span>
+                  <span>Wed</span>
+                  <span>Thu</span>
+                  <span>Fri</span>
+               </div>
+            </div>
+
+          </div>
+
         </div>
       )}
 
@@ -428,7 +535,6 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
         <div className="flex items-center justify-center min-h-full py-6 animate-[fadeIn_0.5s_ease-out]" role="region" aria-label="Money Transfer">
            <div className="bg-brand-card p-6 md:p-12 rounded-[2.5rem] md:rounded-[3rem] w-full max-w-md md:max-w-xl relative shadow-2xl border border-slate-800/50">
               <div className="absolute top-0 right-0 w-32 h-32 md:w-64 md:h-64 bg-brand-lime/5 rounded-full blur-[50px] md:blur-[100px] pointer-events-none"></div>
-              {/* ... (Transfer Form Logic Omitted for brevity, logic unchanged) */}
               
               <div className="flex items-center justify-between mb-8 md:mb-10">
                  <h2 className="text-2xl md:text-3xl font-light">Quick <span className="text-brand-lime font-bold">Transfer</span></h2>
@@ -586,25 +692,94 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
         </div>
       )}
       
-      {/* Transactions Page (omitted for brevity) */}
+      {/* Transactions Page */}
       {state.currentPage === 'transactions' && (
-         <div className="bg-brand-card rounded-[2.5rem] md:rounded-[3rem] p-6 md:p-10 h-full relative overflow-hidden animate-[fadeIn_0.5s_ease-out] flex flex-col" role="region" aria-label="Recent Transactions">
+         <div className="bg-[#0F0F12] p-6 md:p-10 h-full relative overflow-hidden animate-[fadeIn_0.5s_ease-out] flex flex-col font-sans" role="region" aria-label="Recent Transactions">
             {renderHighlight('transactions', 'HISTORY_GRID')}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 md:mb-10 gap-4">
-               <h2 className="text-2xl md:text-3xl font-light">Recent <span className="font-bold text-brand-purple">Insights</span></h2>
+            
+            {/* Header */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
+               <div>
+                 <h2 className="text-3xl md:text-4xl font-light text-slate-200 tracking-tight">Recent <span className="font-bold text-brand-purple">Insights</span></h2>
+               </div>
+               
                {onFileUpload && (
-                  <button className="flex items-center gap-2 px-4 md:px-6 py-2 md:py-3 rounded-full bg-brand-lime text-black font-bold hover:bg-[#dfff6b] transition-colors text-sm shadow-lg focus:outline-none focus:ring-2 focus:ring-brand-lime focus:ring-opacity-50" onClick={() => document.getElementById('file-upload')?.click()} aria-label="Upload a bank statement">
-                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                     <span className="hidden sm:inline">Upload Statement</span><span className="sm:hidden">Upload</span>
-                  </button>
+                  <div className="relative">
+                    <button 
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#3e4836] text-[#D2F159] hover:bg-[#D2F159] hover:text-black transition-all text-sm font-medium border border-[#D2F159]/20"
+                      onClick={() => document.getElementById('file-upload')?.click()} 
+                      aria-label="Upload a bank statement"
+                    >
+                       <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                       <span>Upload Statement</span>
+                    </button>
+                    <input id="file-upload" type="file" className="hidden" onChange={(e) => e.target.files?.[0] && onFileUpload?.(e.target.files[0])} aria-hidden="true" />
+                  </div>
                )}
-               <input id="file-upload" type="file" className="hidden" onChange={(e) => e.target.files?.[0] && onFileUpload?.(e.target.files[0])} aria-hidden="true" />
             </div>
-            <div className="flex-1 overflow-hidden">
-               <div className="h-full overflow-y-auto pr-2 md:pr-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-600 hover:scrollbar-thumb-slate-500">
-                  <table className="w-full text-left border-separate border-spacing-y-2 md:border-spacing-y-3" role="table">
-                     <thead className="sticky top-0 bg-brand-card"><tr className="text-slate-500 text-xs uppercase tracking-wider"><th className="px-4 md:px-6 py-3 md:py-4 font-bold" scope="col">Transaction</th><th className="px-4 md:px-6 py-3 md:py-4 font-bold hidden md:table-cell" scope="col">Category</th><th className="px-4 md:px-6 py-3 md:py-4 font-bold hidden sm:table-cell" scope="col">Date</th><th className="px-4 md:px-6 py-3 md:py-4 text-right font-bold" scope="col">Amount</th><th className="px-4 md:px-6 py-3 md:py-4 text-center font-bold hidden lg:table-cell" scope="col">Status</th></tr></thead>
-                     <tbody>{state.transactions.map((tx) => (<tr key={tx.id} className="bg-[#151518] hover:bg-[#1f1f24] transition-colors group rounded-xl md:rounded-2xl"><td className="px-4 md:px-6 py-4 md:py-5 rounded-l-[1rem] md:rounded-l-[1.5rem]"><div className="flex items-center gap-3 md:gap-4"><div className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center shadow-lg text-sm md:text-base ${tx.type === 'credit' ? 'bg-brand-mint text-black' : 'bg-[#2A2A30] text-white'}`}>{tx.type === 'credit' ? '↓' : '↑'}</div><span className="font-bold text-white text-sm md:text-lg truncate">{tx.description}</span></div></td><td className="px-4 md:px-6 py-4 md:py-5 hidden md:table-cell"><span className="px-2 md:px-3 py-1 md:py-1.5 rounded-full bg-[#2A2A30] text-xs text-slate-300 font-medium">{tx.category}</span></td><td className="px-4 md:px-6 py-4 md:py-5 text-slate-400 font-medium text-xs md:text-sm hidden sm:table-cell">{tx.date}</td><td className={`px-4 md:px-6 py-4 md:py-5 text-right font-mono font-bold text-sm md:text-lg ${tx.type === 'credit' ? 'text-brand-mint' : 'text-white'}`}>{tx.type === 'credit' ? '+' : '-'}${tx.amount.toFixed(2)}</td><td className="px-4 md:px-6 py-4 md:py-5 rounded-r-[1rem] md:rounded-r-[1.5rem] text-center hidden lg:table-cell"><div className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-brand-mint mx-auto shadow-[0_0_10px_rgba(0,208,132,0.8)] animate-pulse" aria-label="Completed"></div></td></tr>))}</tbody>
+
+            {/* Table Container */}
+            <div className="flex-1 overflow-hidden bg-transparent">
+               <div className="h-full overflow-y-auto pr-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
+                  <table className="w-full text-left border-collapse">
+                     <thead className="sticky top-0 bg-[#0F0F12] z-10">
+                       <tr className="text-slate-500 text-[10px] uppercase tracking-widest border-b border-slate-800">
+                         <th className="px-4 py-4 font-bold w-[30%]" scope="col">Transaction</th>
+                         <th className="px-4 py-4 font-bold w-[20%] hidden md:table-cell" scope="col">Category</th>
+                         <th className="px-4 py-4 font-bold w-[15%] hidden sm:table-cell" scope="col">Date</th>
+                         <th className="px-4 py-4 text-right font-bold w-[20%]" scope="col">Amount</th>
+                         <th className="px-4 py-4 text-center font-bold w-[15%] hidden lg:table-cell" scope="col">Status</th>
+                       </tr>
+                     </thead>
+                     <tbody className="divide-y divide-slate-800/50">
+                        {state.transactions.map((tx) => (
+                           <tr key={tx.id} className="hover:bg-white/5 transition-colors group">
+                              {/* Transaction Name & Icon */}
+                              <td className="px-4 py-4 align-middle">
+                                 <div className="flex items-center gap-4">
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                                       tx.type === 'credit' 
+                                          ? 'bg-[#1E3A2F] text-[#00D084]' // Dark green bg, bright green icon
+                                          : 'bg-[#2A2A30] text-slate-400'
+                                    }`}>
+                                       {tx.type === 'credit' ? (
+                                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg>
+                                       ) : (
+                                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg>
+                                       )}
+                                    </div>
+                                    <span className="font-bold text-slate-200 text-sm md:text-base truncate">{tx.description}</span>
+                                 </div>
+                              </td>
+
+                              {/* Category */}
+                              <td className="px-4 py-4 hidden md:table-cell align-middle">
+                                 <span className="px-3 py-1 rounded-full bg-[#1C1C21] border border-[#2A2A30] text-xs text-slate-400 font-medium">
+                                    {tx.category}
+                                 </span>
+                              </td>
+
+                              {/* Date */}
+                              <td className="px-4 py-4 text-slate-500 font-medium text-xs md:text-sm hidden sm:table-cell align-middle">
+                                 {tx.date}
+                              </td>
+
+                              {/* Amount */}
+                              <td className={`px-4 py-4 text-right font-mono font-bold text-sm md:text-base align-middle ${
+                                 tx.type === 'credit' ? 'text-[#00D084]' : 'text-white'
+                              }`}>
+                                 {tx.type === 'credit' ? '+' : '-'}${tx.amount.toFixed(2)}
+                              </td>
+
+                              {/* Status */}
+                              <td className="px-4 py-4 text-center hidden lg:table-cell align-middle">
+                                 <div className="flex items-center justify-center">
+                                    <div className="w-2 h-2 rounded-full bg-[#00D084] shadow-[0_0_8px_rgba(0,208,132,0.6)]"></div>
+                                 </div>
+                              </td>
+                           </tr>
+                        ))}
+                     </tbody>
                   </table>
                </div>
             </div>

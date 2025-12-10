@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { processUserRequest, AgentResponse } from './services/geminiService';
+import { processUserRequest, AgentResponse, transcribeAudio, analyzeImage } from './services/geminiService';
 import { MockFinancialDashboard } from './components/MockFinancialDashboard';
 import { AgentStatusPanel } from './components/AgentStatusPanel';
 import { SafetyModal, TransactionPreview } from './components/SafetyModal';
@@ -9,6 +9,8 @@ import { MOCK_TRANSACTIONS } from './constants';
 import { detectNavigationTarget, AVAILABLE_PAGES } from './navigationMap';
 import { BrowserAutomationEngine, AutomationAction } from './automationEngine';
 import { AgentManager } from './services/agent';
+import { LiveAudioAgent } from './components/LiveAudioAgent';
+import { ImageGenerationModal } from './components/ImageGenerationModal';
 
 const INITIAL_DASHBOARD_STATE: DashboardState = {
   currentPage: 'overview',
@@ -29,14 +31,21 @@ const App: React.FC = () => {
     {
       id: 'welcome',
       sender: AgentType.MANAGER,
-      content: "A.F.A.A. Online with Browser Automation. I can see the screen, click elements, and navigate for you.",
+      content: "A.F.A.A. Online. I can see the screen, click elements, and navigate for you.",
       timestamp: new Date()
     }
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [systemStatus, setSystemStatus] = useState<'IDLE' | 'PROCESSING' | 'WAITING_APPROVAL' | 'SAFE_MODE'>('IDLE');
+  
+  // Feature Toggles
   const [simpleMode, setSimpleMode] = useState(false);
+  const [thinkingMode, setThinkingMode] = useState(false); // Gemini 3 Pro
+  const [fastMode, setFastMode] = useState(false); // Gemini Flash Lite
+  const [isRecording, setIsRecording] = useState(false);
+  const [liveAgentActive, setLiveAgentActive] = useState(false);
+  const [showImageGen, setShowImageGen] = useState(false);
   
   const [manualMode, setManualMode] = useState(false);
   const [formErrors, setFormErrors] = useState<{recipient?: string; amount?: string}>({});
@@ -58,6 +67,10 @@ const App: React.FC = () => {
   const liveRegionRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   
+  // Audio Recorder Ref
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+
   // Automation Engine
   const automationEngine = useRef(new BrowserAutomationEngine());
 
@@ -88,9 +101,8 @@ const App: React.FC = () => {
 
     const handleActionEnd = (e: CustomEvent<{action: AutomationAction, result: any}>) => {
       const { action, result } = e.detail;
-      updateLastStepStatus(result.success ? 'completed' : 'waiting_approval'); // Use waiting_approval color for fail for visibility
+      updateLastStepStatus(result.success ? 'completed' : 'waiting_approval'); 
       
-      // Keep highlight briefly to show success/fail
       setTimeout(() => {
         setActiveHighlight(null);
       }, 500);
@@ -125,9 +137,7 @@ const App: React.FC = () => {
           ...prev,
           currentPage: targetPage.id as DashboardState['currentPage']
         }));
-        console.log(`[App] Agent triggered navigation to ${targetPage.displayName}`);
         
-        // Auto-switch to dashboard on mobile when navigation occurs
         if (window.innerWidth < 768) {
           setMobileTab('dashboard');
         }
@@ -144,7 +154,6 @@ const App: React.FC = () => {
       if ((e.ctrlKey || e.metaKey) && e.key === 't') {
         e.preventDefault();
         manualMode ? setDashboardState(prev => ({ ...prev, currentPage: 'transfer' })) : setInputValue("I want to make a transfer");
-        // Ensure visibility on mobile
         if (!manualMode && window.innerWidth < 768) setMobileTab('agent');
         if (manualMode && window.innerWidth < 768) setMobileTab('dashboard');
       }
@@ -202,10 +211,69 @@ const App: React.FC = () => {
     setDashboardState(prev => ({ ...prev, currentPage: page }));
   };
 
-  const handleFileUpload = (file: File) => {
+  const handleFileUpload = async (file: File) => {
     setDashboardState(prev => ({ ...prev, uploadedFile: file }));
-    setInputValue("Analyze this uploaded document");
+    setMessages(prev => [...prev, { id: Date.now().toString(), sender: AgentType.USER, content: `Uploaded ${file.name}`, timestamp: new Date() }]);
+    
+    // Auto-analyze using Gemini 3 Pro Vision
+    setIsProcessing(true);
+    setSystemStatus('PROCESSING');
+    addStep(AgentType.INTERPRETER, 'processing', `Analyzing ${file.name}...`);
+    
+    try {
+       const analysis = await analyzeImage(file);
+       setMessages(prev => [...prev, { id: Date.now().toString(), sender: AgentType.INTERPRETER, content: analysis, timestamp: new Date() }]);
+       updateLastStepStatus('completed');
+    } catch (e) {
+       console.error(e);
+       updateLastStepStatus('completed');
+       setMessages(prev => [...prev, { id: Date.now().toString(), sender: AgentType.INTERPRETER, content: "Failed to analyze image.", timestamp: new Date() }]);
+    }
+    
+    setIsProcessing(false);
+    setSystemStatus('IDLE');
     if (window.innerWidth < 768) setMobileTab('agent');
+  };
+
+  // --- Audio Recording ---
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+      
+      recorder.ondataavailable = (e) => {
+         if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      
+      recorder.onstop = async () => {
+         const blob = new Blob(audioChunksRef.current, { type: 'audio/wav' }); // Gemini supports generic audio types
+         const reader = new FileReader();
+         reader.onloadend = async () => {
+            const base64 = (reader.result as string).split(',')[1];
+            setIsProcessing(true);
+            const text = await transcribeAudio(base64);
+            setInputValue(prev => prev + (prev ? ' ' : '') + text);
+            setIsProcessing(false);
+         };
+         reader.readAsDataURL(blob);
+         
+         stream.getTracks().forEach(t => t.stop());
+      };
+      
+      recorder.start();
+      setIsRecording(true);
+    } catch (e) {
+      console.error("Mic error", e);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+       mediaRecorderRef.current.stop();
+       setIsRecording(false);
+    }
   };
 
   const handleSendMessage = async (overrideContent?: string) => {
@@ -222,7 +290,16 @@ const App: React.FC = () => {
     addStep(AgentType.MANAGER, 'processing', 'Analyzing user request...');
     
     try {
-      const response = await processUserRequest(userMsg.content, dashboardState, { simpleMode });
+      const response = await processUserRequest(
+        userMsg.content, 
+        dashboardState, 
+        { 
+          simpleMode, 
+          useThinking: thinkingMode, 
+          useLite: fastMode,
+          useSearch: true // Always ground if useful
+        }
+      );
       updateLastStepStatus('completed');
 
       if (response.safety === SafetyStatus.REQUIRE_CONFIRMATION) {
@@ -256,7 +333,6 @@ const App: React.FC = () => {
   };
 
   const handleManualAction = async (action: AgentAction) => {
-      // Execute a single action manually via the engine
       setIsProcessing(true);
       await executeActionSequence([action]);
       setIsProcessing(false);
@@ -269,21 +345,11 @@ const App: React.FC = () => {
     for (const action of actions) {
       const confidence = action.confidence || 95;
       
-      // LEGACY: Delegate pure automation actions to the Engine via legacy path if needed
       const automationActions = ['SCREENSHOT', 'READ_PAGE', 'SCROLL', 'WAIT', 'VERIFY', 'HOVER', 'GET_ELEMENT_VALUE', 'WAIT_FOR_SELECTOR', 'BROWSE'];
       
       if (automationActions.includes(action.type)) {
         addStep(AgentType.INTERPRETER, 'processing', `Executing ${action.type}...`, confidence);
         const report = await automationEngine.current.executeActions([action as any]);
-        
-        if (report.results[0]?.screenshot) {
-           setMessages(prev => [...prev, {
-             id: Date.now().toString(),
-             sender: AgentType.INTERPRETER,
-             content: "I've captured a screenshot of the current view for analysis.",
-             timestamp: new Date()
-           }]);
-        }
         updateLastStepStatus('completed');
         await delay(500);
         continue;
@@ -291,28 +357,12 @@ const App: React.FC = () => {
 
       switch (action.type) {
         case 'NAVIGATE':
-          // Enhanced logic using detecting: check page, target, AND url
           let rawTarget = (action.page || action.target || action.url || '').toString().toLowerCase().trim();
-          
-          // Try to resolve the target to a valid internal page ID using aliases (e.g. "go to agent mode" -> "agent-mode")
           const detected = detectNavigationTarget(rawTarget || action.description || '');
-          let targetPageId = rawTarget; // Default to the raw input if detection fails but we have input
-
-          if (detected) {
-            targetPageId = detected.id;
-          } else if (rawTarget.startsWith('http') || rawTarget.includes('/')) {
-             targetPageId = rawTarget; // Keep URL
-          } else if (!rawTarget) {
-             // Only default to overview if we have absolutely no target information
-             targetPageId = 'overview'; 
-          }
+          let targetPageId = detected ? detected.id : rawTarget || 'overview';
           
           addStep(AgentType.EXECUTOR, 'processing', `Navigating to ${targetPageId}...`, confidence);
-          await automationEngine.current.executeActions([{
-            type: 'NAVIGATE',
-            page: targetPageId,
-            url: action.url
-          }]);
+          await automationEngine.current.executeActions([{ type: 'NAVIGATE', page: targetPageId, url: action.url }]);
           updateLastStepStatus('completed');
           break;
 
@@ -324,13 +374,8 @@ const App: React.FC = () => {
           if (action.target?.includes('amount')) selector = 'input[placeholder*="0.00"]';
           
           if (selector) {
-             await automationEngine.current.executeActions([{
-                type: 'FILL_INPUT',
-                selector: selector,
-                value: action.value
-             }]);
+             await automationEngine.current.executeActions([{ type: 'FILL_INPUT', selector: selector, value: action.value }]);
           } else {
-             // Fallback
              setDashboardState(prev => {
               const field = action.target?.toLowerCase() || '';
               const newState = { ...prev.transferForm };
@@ -346,10 +391,7 @@ const App: React.FC = () => {
         case 'CLICK':
            addStep(AgentType.EXECUTOR, 'processing', `Clicking ${action.target}...`, confidence);
            if (action.target?.toLowerCase().includes('submit')) {
-             await automationEngine.current.executeActions([{
-               type: 'CLICK',
-               selector: 'button[type="submit"]'
-             }]);
+             await automationEngine.current.executeActions([{ type: 'CLICK', selector: 'button[type="submit"]' }]);
            }
            updateLastStepStatus('completed');
            break;
@@ -415,25 +457,15 @@ const App: React.FC = () => {
     <div className="flex h-[100dvh] w-screen bg-brand-dark overflow-hidden font-sans text-slate-200 flex-col md:flex-row relative">
       <div className="sr-only" role="status" aria-live="polite" ref={liveRegionRef}></div>
 
+      {liveAgentActive && <LiveAudioAgent onClose={() => setLiveAgentActive(false)} />}
+      {showImageGen && <ImageGenerationModal onClose={() => setShowImageGen(false)} />}
+
       {/* MOBILE BOTTOM NAV */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-[#1C1C21] border-t border-[#25252b] z-[60] flex items-center justify-around pb-1 shadow-[0_-5px_20px_rgba(0,0,0,0.5)]">
-         <button 
-           onClick={() => setMobileTab('agent')}
-           className={`flex flex-col items-center justify-center gap-1 w-full h-full active:scale-95 transition-all ${mobileTab === 'agent' ? 'text-brand-cyan' : 'text-slate-500'}`}
-         >
-           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-4 4v-4z" />
-           </svg>
+         <button onClick={() => setMobileTab('agent')} className={`flex flex-col items-center justify-center gap-1 w-full h-full ${mobileTab === 'agent' ? 'text-brand-cyan' : 'text-slate-500'}`}>
            <span className="text-[10px] font-bold uppercase tracking-wider">Agent</span>
          </button>
-         <div className="w-[1px] h-8 bg-[#25252b]"></div>
-         <button 
-           onClick={() => setMobileTab('dashboard')}
-           className={`flex flex-col items-center justify-center gap-1 w-full h-full active:scale-95 transition-all ${mobileTab === 'dashboard' ? 'text-brand-lime' : 'text-slate-500'}`}
-         >
-           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-           </svg>
+         <button onClick={() => setMobileTab('dashboard')} className={`flex flex-col items-center justify-center gap-1 w-full h-full ${mobileTab === 'dashboard' ? 'text-brand-lime' : 'text-slate-500'}`}>
            <span className="text-[10px] font-bold uppercase tracking-wider">Dashboard</span>
          </button>
       </div>
@@ -447,20 +479,26 @@ const App: React.FC = () => {
           <div className="flex justify-between items-start">
             <div>
               <h1 className="text-2xl font-bold text-white tracking-tighter flex items-center gap-2"><span className="text-brand-cyan">A.F.A.A.</span></h1>
-              <span className="text-[10px] font-mono text-slate-500 uppercase tracking-[0.2em]">Autonomous Financial Agent</span>
             </div>
-            <div className="flex items-center gap-3 bg-[#1C1C21] border border-[#25252b] rounded-full px-3 py-1.5 shadow-inner">
-               <div className={`w-2.5 h-2.5 rounded-full ${systemStatus === 'PROCESSING' ? 'bg-brand-cyan animate-pulse' : systemStatus === 'WAITING_APPROVAL' ? 'bg-brand-orange animate-pulse' : 'bg-brand-mint'}`}></div>
-               <span className={`text-[10px] font-bold tracking-widest ${getStatusColor(systemStatus)}`}>{systemStatus.replace('_', ' ')}</span>
+            <div className="flex items-center gap-2">
+               <button 
+                 onClick={() => setLiveAgentActive(true)}
+                 className="p-2 rounded-full bg-brand-lime/10 text-brand-lime hover:bg-brand-lime hover:text-black transition-all border border-brand-lime/30"
+                 title="Open Live Voice Agent"
+               >
+                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+               </button>
+               <div className="flex items-center gap-3 bg-[#1C1C21] border border-[#25252b] rounded-full px-3 py-1.5 shadow-inner">
+                  <div className={`w-2.5 h-2.5 rounded-full ${systemStatus === 'PROCESSING' ? 'bg-brand-cyan animate-pulse' : systemStatus === 'WAITING_APPROVAL' ? 'bg-brand-orange animate-pulse' : 'bg-brand-mint'}`}></div>
+                  <span className={`text-[10px] font-bold tracking-widest ${getStatusColor(systemStatus)}`}>{systemStatus.replace('_', ' ')}</span>
+               </div>
             </div>
           </div>
-          <div className="flex justify-between items-center mt-2">
-            <div className="flex gap-2 text-[10px] text-slate-500 font-mono hidden sm:flex">
-              <span className="bg-[#1C1C21] px-1.5 py-0.5 rounded border border-[#25252b]">Ctrl+T Transfer</span>
-              <span className="bg-[#1C1C21] px-1.5 py-0.5 rounded border border-[#25252b]">Ctrl+D Dashboard</span>
-            </div>
+          <div className="flex justify-between items-center mt-2 flex-wrap gap-2">
             <div className="flex gap-2">
-              <button onClick={() => setManualMode(!manualMode)} className={`flex items-center gap-2 px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all ${manualMode ? 'bg-brand-lime/20 border-brand-lime text-brand-lime' : 'bg-[#1C1C21] border-[#25252b] text-slate-500'}`}>MANUAL</button>
+               <button onClick={() => setThinkingMode(!thinkingMode)} className={`px-2 py-1 rounded text-[10px] font-bold border transition-all ${thinkingMode ? 'bg-brand-purple text-white border-brand-purple' : 'bg-[#1C1C21] text-slate-500 border-[#25252b]'}`}>🧠 DEEP THINK</button>
+               <button onClick={() => setFastMode(!fastMode)} className={`px-2 py-1 rounded text-[10px] font-bold border transition-all ${fastMode ? 'bg-yellow-500 text-black border-yellow-500' : 'bg-[#1C1C21] text-slate-500 border-[#25252b]'}`}>⚡ FAST</button>
+               <button onClick={() => setShowImageGen(true)} className={`px-2 py-1 rounded text-[10px] font-bold border bg-[#1C1C21] text-slate-500 border-[#25252b] hover:text-white hover:border-slate-400`}>🎨 STUDIO</button>
             </div>
           </div>
         </div>
@@ -486,6 +524,16 @@ const App: React.FC = () => {
            {!manualMode && (
              <div className="p-4 border-t border-[#25252b] bg-[#0F0F12]">
                <div className="flex gap-2 relative">
+                 <button 
+                   onMouseDown={startRecording}
+                   onMouseUp={stopRecording}
+                   onTouchStart={startRecording}
+                   onTouchEnd={stopRecording}
+                   className={`p-3 rounded-lg border transition-all ${isRecording ? 'bg-red-500/20 text-red-500 border-red-500 animate-pulse' : 'bg-[#1C1C21] text-slate-400 border-[#25252b] hover:text-white'}`}
+                   title="Hold to Speak"
+                 >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                 </button>
                  <input ref={inputRef} type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Type commands..." className="flex-1 bg-[#1C1C21] border border-[#25252b] text-slate-200 rounded-lg p-3 text-sm focus:border-brand-cyan focus:outline-none" disabled={isProcessing} />
                  <button onClick={() => handleSendMessage()} disabled={isProcessing} className="bg-brand-cyan hover:bg-cyan-400 text-slate-900 px-5 py-2 rounded-lg text-sm font-bold transition-all">{isProcessing ? '...' : 'SEND'}</button>
                </div>
@@ -502,6 +550,7 @@ const App: React.FC = () => {
         <div className="bg-[#1C1C21] p-2 flex items-center gap-3 text-xs text-slate-400 border-b border-[#25252b]">
            <div className="flex gap-1.5 ml-2"><div className="w-2.5 h-2.5 rounded-full bg-red-500/20"></div><div className="w-2.5 h-2.5 rounded-full bg-yellow-500/20"></div><div className="w-2.5 h-2.5 rounded-full bg-green-500/20"></div></div>
            <div className="bg-[#0F0F12] px-4 py-1.5 rounded flex-1 text-center font-mono opacity-60 truncate border border-[#25252b] text-[10px]">https://portal.darlene.demo/dashboard/{dashboardState.currentPage}</div>
+           <button onClick={() => setShowImageGen(true)} className="px-2 py-0.5 rounded bg-brand-purple/20 text-brand-purple text-[10px] font-bold hover:bg-brand-purple hover:text-white transition-colors">NEW DESIGN</button>
         </div>
         <div className="flex-1 relative overflow-hidden">
            <MockFinancialDashboard 
