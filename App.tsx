@@ -1,16 +1,17 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { processUserRequest, AgentResponse, transcribeAudio, analyzeImage } from './services/geminiService';
+import { processUserRequest, AgentResponse, transcribeAudio, analyzeImage, synthesizeSpeech } from './services/geminiService';
 import { MockFinancialDashboard } from './components/MockFinancialDashboard';
 import { AgentStatusPanel } from './components/AgentStatusPanel';
 import { SafetyModal, TransactionPreview } from './components/SafetyModal';
-import { ChatMessage, DashboardState, AgentType, ProcessingStep, SafetyStatus, AgentAction, BrowserResult } from './types';
+import { ChatMessage, DashboardState, AgentType, ProcessingStep, SafetyStatus, AgentAction, BrowserResult, Transaction } from './types';
 import { MOCK_TRANSACTIONS } from './constants';
 import { detectNavigationTarget, AVAILABLE_PAGES } from './navigationMap';
 import { BrowserAutomationEngine, AutomationAction } from './automationEngine';
 import { AgentManager } from './services/agent';
 import { LiveAudioAgent } from './components/LiveAudioAgent';
 import { ImageGenerationModal } from './components/ImageGenerationModal';
+import { AgentMode } from './components/AgentMode';
 
 const INITIAL_DASHBOARD_STATE: DashboardState = {
   currentPage: 'overview',
@@ -46,8 +47,11 @@ const App: React.FC = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [liveAgentActive, setLiveAgentActive] = useState(false);
   const [showImageGen, setShowImageGen] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(false); // TTS Toggle
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   
-  const [manualMode, setManualMode] = useState(false);
+  // UX Improvements: Manual Mode ON by default for immediate usability
+  const [manualMode, setManualMode] = useState(true);
   const [formErrors, setFormErrors] = useState<{recipient?: string; amount?: string}>({});
   const [isSubmittingTransfer, setIsSubmittingTransfer] = useState(false);
   
@@ -59,6 +63,9 @@ const App: React.FC = () => {
   const [pendingAction, setPendingAction] = useState<{ actions: AgentAction[], originalResponse: AgentResponse } | null>(null);
   const [transactionPreview, setTransactionPreview] = useState<TransactionPreview | undefined>(undefined);
   const [showSafetyModal, setShowSafetyModal] = useState(false);
+  
+  // Transaction Details Modal
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
 
   // Mobile View State
   const [mobileTab, setMobileTab] = useState<'agent' | 'dashboard'>('dashboard');
@@ -70,6 +77,8 @@ const App: React.FC = () => {
   // Audio Recorder Ref
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  // Audio Playback Context
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   // Automation Engine
   const automationEngine = useRef(new BrowserAutomationEngine());
@@ -194,7 +203,7 @@ const App: React.FC = () => {
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'm') {
         e.preventDefault();
-        setManualMode(!manualMode);
+        setManualMode(prev => !prev);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -205,35 +214,100 @@ const App: React.FC = () => {
   const validateForm = () => {
     const errors: {recipient?: string; amount?: string} = {};
     if (!dashboardState.transferForm.recipient.trim()) errors.recipient = 'Required';
-    const amount = parseFloat(dashboardState.transferForm.amount.replace(/[^0-9.]/g, ''));
-    if (!dashboardState.transferForm.amount.trim() || isNaN(amount)) errors.amount = 'Invalid amount';
+    
+    // ISSUE 40 & 43 FIX: Updated Regex to allow alphanumeric (0-9) and international characters (\u00C0-\u017F)
+    const nameRegex = /^[a-zA-Z0-9\s\.\-'\u00C0-\u017F]+$/;
+    if (dashboardState.transferForm.recipient.trim() && !nameRegex.test(dashboardState.transferForm.recipient)) {
+        errors.recipient = 'Invalid characters in name';
+    }
+
+    // ISSUE 27: Amount Validation
+    const amountStr = dashboardState.transferForm.amount.replace(/[^0-9.]/g, '');
+    const amount = parseFloat(amountStr);
+    
+    if (!dashboardState.transferForm.amount.trim() || isNaN(amount)) {
+        errors.amount = 'Invalid amount';
+    } else if (amount <= 0) {
+        errors.amount = 'Amount must be positive';
+    } else if (amount > 1000000) {
+        errors.amount = 'Limit exceeded ($1M)';
+    }
+
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
   const handleFormFieldChange = (field: 'recipient' | 'amount' | 'note', value: string) => {
     if (field === 'amount') {
-      const numeric = value.replace(/[^0-9.]/g, '');
-      const parts = numeric.split('.');
-      value = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : numeric;
+      // ISSUE 32: Strict Decimal Precision & ISSUE 35: Negative Handling
+      
+      // 1. Allow only numbers and dots
+      let cleaned = value.replace(/[^0-9.]/g, '');
+      
+      // 2. Prevent multiple dots
+      const dots = cleaned.match(/\./g);
+      if (dots && dots.length > 1) {
+          return; // Ignore input if second dot
+      }
+
+      // 3. Limit to 2 decimal places
+      if (cleaned.includes('.')) {
+          const [int, dec] = cleaned.split('.');
+          if (dec.length > 2) {
+              cleaned = `${int}.${dec.slice(0, 2)}`;
+          }
+      }
+
+      // 4. Limit absolute max value
+      if (parseFloat(cleaned) > 1000000) cleaned = "1000000";
+      
+      setDashboardState(prev => ({ ...prev, transferForm: { ...prev.transferForm, amount: cleaned } }));
+    } else {
+      setDashboardState(prev => ({ ...prev, transferForm: { ...prev.transferForm, [field]: value } }));
     }
-    setDashboardState(prev => ({ ...prev, transferForm: { ...prev.transferForm, [field]: value } }));
+    
     if (formErrors[field as keyof typeof formErrors]) setFormErrors(prev => ({ ...prev, [field]: undefined }));
   };
 
   const handleManualTransferSubmit = async () => {
     if (!validateForm()) return;
     setIsSubmittingTransfer(true);
-    await delay(2000);
+    await delay(1500); // Simulated network request
+    
     const amount = parseFloat(dashboardState.transferForm.amount);
+    
+    // ISSUE 33 & 44: Date Format Consistency
+    // Use 'en-US' with short month to match MOCK_TRANSACTIONS (e.g., "Oct 24")
+    const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+    const newTx: Transaction = { 
+        id: Date.now().toString(), 
+        description: dashboardState.transferForm.recipient, 
+        amount, 
+        date: dateStr, 
+        type: 'debit', 
+        category: dashboardState.transferForm.note || 'Transfer' 
+    };
+
     setDashboardState(prev => ({
       ...prev,
       balance: prev.balance - amount,
       lastTransactionStatus: 'success',
       transferForm: { recipient: '', amount: '', note: '' },
-      transactions: [{ id: Date.now().toString(), description: prev.transferForm.recipient, amount, date: new Date().toLocaleDateString(), type: 'debit', category: 'Transfer' }, ...prev.transactions]
+      transactions: [newTx, ...prev.transactions]
     }));
-    setMessages(prev => [...prev, { id: Date.now().toString(), sender: AgentType.MANAGER, content: "Transfer completed successfully.", timestamp: new Date() }]);
+    
+    // ISSUE 45: Success message persistence and detail
+    // Added time to the success message to provide better context
+    const timeStr = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    const successMsg = `Transfer of $${amount.toFixed(2)} to ${newTx.description} successful at ${timeStr}.`;
+    setMessages(prev => [...prev, { id: Date.now().toString(), sender: AgentType.MANAGER, content: successMsg, timestamp: new Date() }]);
+    
+    // Auto-Speak success message if voice enabled
+    if (voiceEnabled) {
+       await playTts(successMsg);
+    }
+
     setIsSubmittingTransfer(false);
   };
 
@@ -254,6 +328,7 @@ const App: React.FC = () => {
        const analysis = await analyzeImage(file);
        setMessages(prev => [...prev, { id: Date.now().toString(), sender: AgentType.INTERPRETER, content: analysis, timestamp: new Date() }]);
        updateLastStep({ status: 'completed' });
+       if (voiceEnabled) await playTts(analysis.substring(0, 150) + "..."); // Speak summary
     } catch (e) {
        console.error(e);
        updateLastStep({ status: 'completed' });
@@ -265,7 +340,57 @@ const App: React.FC = () => {
     if (window.innerWidth < 768) setMobileTab('agent');
   };
 
-  // --- Audio Recording ---
+  // --- Audio Logic ---
+  
+  // Helper to play raw PCM from Gemini TTS
+  const playRawAudio = async (base64String: string) => {
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      }
+      const ctx = audioContextRef.current;
+      if (ctx.state === 'suspended') await ctx.resume();
+
+      const binaryString = atob(base64String);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      // Convert 16-bit PCM to float
+      const int16Data = new Int16Array(bytes.buffer);
+      const floatData = new Float32Array(int16Data.length);
+      for (let i = 0; i < int16Data.length; i++) {
+        floatData[i] = int16Data[i] / 32768.0;
+      }
+
+      const buffer = ctx.createBuffer(1, floatData.length, 24000);
+      buffer.getChannelData(0).set(floatData);
+
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      
+      setIsPlayingAudio(true);
+      source.onended = () => setIsPlayingAudio(false);
+      source.start();
+    } catch (e) {
+      console.error("Audio playback error", e);
+      setIsPlayingAudio(false);
+    }
+  };
+
+  const playTts = async (text: string) => {
+    setIsPlayingAudio(true);
+    const audioData = await synthesizeSpeech(text);
+    if (audioData) {
+      await playRawAudio(audioData);
+    } else {
+      setIsPlayingAudio(false);
+    }
+  };
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -278,7 +403,7 @@ const App: React.FC = () => {
       };
       
       recorder.onstop = async () => {
-         const blob = new Blob(audioChunksRef.current, { type: 'audio/wav' }); // Gemini supports generic audio types
+         const blob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
          const reader = new FileReader();
          reader.onloadend = async () => {
             const base64 = (reader.result as string).split(',')[1];
@@ -327,7 +452,7 @@ const App: React.FC = () => {
           simpleMode, 
           useThinking: thinkingMode, 
           useLite: fastMode,
-          useSearch: true // Always ground if useful
+          useSearch: true
         }
       );
       updateLastStep({ status: 'completed' });
@@ -338,6 +463,8 @@ const App: React.FC = () => {
         setPendingAction({ actions: response.actions, originalResponse: response });
         setShowSafetyModal(true);
         setIsProcessing(false);
+        // Announce safety check if voice on
+        if (voiceEnabled) await playTts("Safety check required. Please confirm this transaction.");
         return;
       }
 
@@ -349,9 +476,21 @@ const App: React.FC = () => {
         content: response.message,
         timestamp: new Date()
       }]);
-    } catch (err) {
+
+      // TTS: Speak the agent's response
+      if (voiceEnabled) {
+         await playTts(response.message);
+      }
+
+    } catch (err: any) {
       console.error(err);
-      setMessages(prev => [...prev, { id: Date.now().toString(), sender: AgentType.MANAGER, content: "Error coordinating agents.", timestamp: new Date() }]);
+      setMessages(prev => [...prev, { 
+          id: Date.now().toString(), 
+          sender: AgentType.MANAGER, 
+          content: `I encountered an issue processing that request. (${err.message || 'Unknown error'})`, 
+          timestamp: new Date() 
+      }]);
+      updateLastStep({ status: 'failed', description: 'Process failed' });
     } finally {
       if (!showSafetyModal) {
         setIsProcessing(false);
@@ -476,11 +615,17 @@ const App: React.FC = () => {
     if (pendingAction) {
       setIsProcessing(true);
       setSystemStatus('PROCESSING');
-      await executeActionSequence(pendingAction.actions);
-      setMessages(prev => [...prev, { id: Date.now().toString(), sender: AgentType.MANAGER, content: pendingAction.originalResponse.message, timestamp: new Date() }]);
-      setPendingAction(null);
-      setIsProcessing(false);
-      setSystemStatus('IDLE');
+      try {
+        await executeActionSequence(pendingAction.actions);
+        setMessages(prev => [...prev, { id: Date.now().toString(), sender: AgentType.MANAGER, content: pendingAction.originalResponse.message, timestamp: new Date() }]);
+        if (voiceEnabled) await playTts(pendingAction.originalResponse.message);
+      } catch (err) {
+        console.error("Execute error", err);
+      } finally {
+        setPendingAction(null);
+        setIsProcessing(false);
+        setSystemStatus('IDLE');
+      }
     }
   };
 
@@ -489,7 +634,9 @@ const App: React.FC = () => {
     setPendingAction(null);
     setSystemStatus('IDLE');
     setIsProcessing(false);
-    setMessages(prev => [...prev, { id: Date.now().toString(), sender: AgentType.MANAGER, content: "Cancelled.", timestamp: new Date() }]);
+    const cancelMsg = "Transaction cancelled by user.";
+    setMessages(prev => [...prev, { id: Date.now().toString(), sender: AgentType.MANAGER, content: cancelMsg, timestamp: new Date() }]);
+    if (voiceEnabled) playTts(cancelMsg);
   };
 
   const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
@@ -512,6 +659,35 @@ const App: React.FC = () => {
 
       {liveAgentActive && <LiveAudioAgent onClose={() => setLiveAgentActive(false)} />}
       {showImageGen && <ImageGenerationModal onClose={() => setShowImageGen(false)} />}
+
+      {/* Transaction Details Modal */}
+      {selectedTransaction && (
+         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]">
+            <div className="bg-[#1C1C21] border border-[#333] rounded-2xl p-6 w-full max-w-sm shadow-2xl relative">
+               <div className="flex justify-between items-start mb-4">
+                  <h3 className="text-lg font-bold text-white">Transaction Details</h3>
+                  <button onClick={() => setSelectedTransaction(null)} className="text-slate-500 hover:text-white p-2">✕</button>
+               </div>
+               <div className="space-y-4">
+                  <div className="flex justify-center my-4">
+                      <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl ${selectedTransaction.type === 'credit' ? 'bg-[#1E3A2F] text-[#00D084]' : 'bg-[#2A2A30] text-slate-400'}`}>
+                         {selectedTransaction.type === 'credit' ? '↓' : '↑'}
+                      </div>
+                  </div>
+                  <div className="text-center mb-6">
+                      <div className="text-2xl font-bold text-white">${selectedTransaction.amount.toFixed(2)}</div>
+                      <div className="text-sm text-slate-400">{selectedTransaction.description}</div>
+                  </div>
+                  <div className="bg-[#151518] rounded-xl p-3 space-y-2 text-sm border border-[#25252b]">
+                     <div className="flex justify-between"><span className="text-slate-500">Date</span> <span>{selectedTransaction.date}</span></div>
+                     <div className="flex justify-between"><span className="text-slate-500">Category</span> <span>{selectedTransaction.category}</span></div>
+                     <div className="flex justify-between"><span className="text-slate-500">ID</span> <span className="font-mono text-xs">{selectedTransaction.id}</span></div>
+                  </div>
+                  <button onClick={() => setSelectedTransaction(null)} className="w-full py-3 bg-[#25252b] hover:bg-[#333] rounded-xl font-bold text-sm transition-colors focus:ring-2 focus:ring-brand-lime">Close</button>
+               </div>
+            </div>
+         </div>
+      )}
 
       {/* MOBILE BOTTOM NAV */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-[#1C1C21] border-t border-[#25252b] z-[60] flex items-center justify-around pb-1 shadow-[0_-5px_20px_rgba(0,0,0,0.5)]">
@@ -536,7 +712,7 @@ const App: React.FC = () => {
             <div className="flex items-center gap-2">
                <button 
                  onClick={() => setLiveAgentActive(true)}
-                 className="p-2 rounded-full bg-brand-lime/10 text-brand-lime hover:bg-brand-lime hover:text-black transition-all border border-brand-lime/30"
+                 className="p-2 rounded-full bg-brand-lime/10 text-brand-lime hover:bg-brand-lime hover:text-black transition-all border border-brand-lime/30 focus:outline-none focus:ring-2 focus:ring-brand-lime"
                  title="Open Live Voice Agent"
                >
                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
@@ -549,9 +725,9 @@ const App: React.FC = () => {
           </div>
           <div className="flex justify-between items-center mt-2 flex-wrap gap-2">
             <div className="flex gap-2">
-               <button onClick={() => setThinkingMode(!thinkingMode)} className={`px-2 py-1 rounded text-[10px] font-bold border transition-all ${thinkingMode ? 'bg-brand-purple text-white border-brand-purple' : 'bg-[#1C1C21] text-slate-500 border-[#25252b]'}`}>🧠 DEEP THINK</button>
-               <button onClick={() => setFastMode(!fastMode)} className={`px-2 py-1 rounded text-[10px] font-bold border transition-all ${fastMode ? 'bg-yellow-500 text-black border-yellow-500' : 'bg-[#1C1C21] text-slate-500 border-[#25252b]'}`}>⚡ FAST</button>
-               <button onClick={() => setShowImageGen(true)} className={`px-2 py-1 rounded text-[10px] font-bold border bg-[#1C1C21] text-slate-500 border-[#25252b] hover:text-white hover:border-slate-400`}>🎨 STUDIO</button>
+               <button onClick={() => setThinkingMode(!thinkingMode)} className={`px-2 py-1 rounded text-[10px] font-bold border transition-all ${thinkingMode ? 'bg-brand-purple text-white border-brand-purple shadow-[0_0_10px_rgba(139,92,246,0.3)]' : 'bg-[#1C1C21] text-slate-500 border-[#25252b]'}`}>🧠 DEEP THINK</button>
+               <button onClick={() => setFastMode(!fastMode)} className={`px-2 py-1 rounded text-[10px] font-bold border transition-all ${fastMode ? 'bg-yellow-500 text-black border-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.3)]' : 'bg-[#1C1C21] text-slate-500 border-[#25252b]'}`}>⚡ FAST</button>
+               <button onClick={() => setShowImageGen(true)} className={`px-2 py-1 rounded text-[10px] font-bold border bg-[#1C1C21] text-slate-500 border-[#25252b] hover:text-white hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-purple`}>🎨 STUDIO</button>
             </div>
           </div>
         </div>
@@ -578,17 +754,32 @@ const App: React.FC = () => {
              <div className="p-4 border-t border-[#25252b] bg-[#0F0F12]">
                <div className="flex gap-2 relative">
                  <button 
+                   onClick={() => setVoiceEnabled(!voiceEnabled)}
+                   className={`p-3 rounded-lg border transition-all focus:outline-none focus:ring-2 focus:ring-brand-lime ${voiceEnabled ? (isPlayingAudio ? 'bg-brand-mint text-black border-brand-mint' : 'bg-brand-lime/20 text-brand-lime border-brand-lime') : 'bg-[#1C1C21] text-slate-400 border-[#25252b] hover:text-white'}`}
+                   title="Toggle Voice Output"
+                 >
+                    {isPlayingAudio ? (
+                        <div className="flex gap-0.5 items-center h-5">
+                            <div className="w-1 h-3 bg-current animate-pulse"></div>
+                            <div className="w-1 h-5 bg-current animate-pulse delay-75"></div>
+                            <div className="w-1 h-2 bg-current animate-pulse delay-150"></div>
+                        </div>
+                    ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
+                    )}
+                 </button>
+                 <button 
                    onMouseDown={startRecording}
                    onMouseUp={stopRecording}
                    onTouchStart={startRecording}
                    onTouchEnd={stopRecording}
-                   className={`p-3 rounded-lg border transition-all ${isRecording ? 'bg-red-500/20 text-red-500 border-red-500 animate-pulse' : 'bg-[#1C1C21] text-slate-400 border-[#25252b] hover:text-white'}`}
+                   className={`p-3 rounded-lg border transition-all focus:outline-none focus:ring-2 focus:ring-brand-lime ${isRecording ? 'bg-red-500/20 text-red-500 border-red-500 animate-pulse' : 'bg-[#1C1C21] text-slate-400 border-[#25252b] hover:text-white'}`}
                    title="Hold to Speak"
                  >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
                  </button>
                  <input ref={inputRef} type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Type commands..." className="flex-1 bg-[#1C1C21] border border-[#25252b] text-slate-200 rounded-lg p-3 text-sm focus:border-brand-cyan focus:outline-none" disabled={isProcessing} />
-                 <button onClick={() => handleSendMessage()} disabled={isProcessing} className="bg-brand-cyan hover:bg-cyan-400 text-slate-900 px-5 py-2 rounded-lg text-sm font-bold transition-all">{isProcessing ? '...' : 'SEND'}</button>
+                 <button onClick={() => handleSendMessage()} disabled={isProcessing} className="bg-brand-cyan hover:bg-cyan-400 text-slate-900 px-5 py-2 rounded-lg text-sm font-bold transition-all focus:outline-none focus:ring-2 focus:ring-brand-cyan">{isProcessing ? '...' : 'SEND'}</button>
                </div>
              </div>
            )}
@@ -603,25 +794,45 @@ const App: React.FC = () => {
         <div className="bg-[#1C1C21] p-2 flex items-center gap-3 text-xs text-slate-400 border-b border-[#25252b]">
            <div className="flex gap-1.5 ml-2"><div className="w-2.5 h-2.5 rounded-full bg-red-500/20"></div><div className="w-2.5 h-2.5 rounded-full bg-yellow-500/20"></div><div className="w-2.5 h-2.5 rounded-full bg-green-500/20"></div></div>
            <div className="bg-[#0F0F12] px-4 py-1.5 rounded flex-1 text-center font-mono opacity-60 truncate border border-[#25252b] text-[10px]">https://portal.darlene.demo/dashboard/{dashboardState.currentPage}</div>
-           <button onClick={() => setShowImageGen(true)} className="px-2 py-0.5 rounded bg-brand-purple/20 text-brand-purple text-[10px] font-bold hover:bg-brand-purple hover:text-white transition-colors">NEW DESIGN</button>
+           <div className="flex items-center gap-2">
+             <button 
+                onClick={() => setManualMode(!manualMode)} 
+                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${manualMode ? 'bg-brand-lime text-black' : 'bg-[#25252b] text-slate-500 hover:text-white'}`}
+             >
+                {manualMode ? 'MANUAL: ON' : 'MANUAL: OFF'}
+             </button>
+             <button onClick={() => setShowImageGen(true)} className="px-2 py-0.5 rounded bg-brand-purple/20 text-brand-purple text-[10px] font-bold hover:bg-brand-purple hover:text-white transition-colors">NEW DESIGN</button>
+           </div>
         </div>
         <div className="flex-1 relative overflow-hidden">
-           <MockFinancialDashboard 
-            state={dashboardState} 
-            scanning={isScanning} 
-            highlightTarget={activeHighlight} 
-            onFileUpload={handleFileUpload} 
-            onNavigate={handleManualNavigation} 
-            manualMode={manualMode} 
-            onFormFieldChange={handleFormFieldChange} 
-            onTransferSubmit={handleManualTransferSubmit} 
-            formErrors={formErrors} 
-            isSubmittingTransfer={isSubmittingTransfer}
-            agentManager={agentManager}
-            agentSteps={agentSteps}
-            onSendMessage={handleSendMessage}
-            onManualAction={handleManualAction}
-          />
+           {dashboardState.currentPage === 'agent-mode' ? (
+              <div className="w-full h-full relative" role="main" aria-label="Agent Mode Interface">
+                <AgentMode 
+                  agentManager={agentManager} 
+                  onExit={() => handleManualNavigation('overview')}
+                  steps={agentSteps}
+                  onSendMessage={handleSendMessage}
+                  onManualAction={handleManualAction}
+                />
+              </div>
+           ) : (
+              <MockFinancialDashboard 
+                state={dashboardState} 
+                scanning={isScanning} 
+                highlightTarget={activeHighlight} 
+                onFileUpload={handleFileUpload} 
+                onNavigate={handleManualNavigation} 
+                manualMode={manualMode} 
+                onFormFieldChange={handleFormFieldChange} 
+                onTransferSubmit={handleManualTransferSubmit} 
+                formErrors={formErrors} 
+                isSubmittingTransfer={isSubmittingTransfer}
+                agentSteps={agentSteps}
+                onSendMessage={handleSendMessage}
+                onManualAction={handleManualAction}
+                onTransactionClick={setSelectedTransaction}
+              />
+           )}
         </div>
       </div>
 

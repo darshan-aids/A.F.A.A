@@ -75,7 +75,7 @@ export interface BrowserResult {
 
 export interface ProcessingStep {
   agent: AgentType;
-  status: 'pending' | 'processing' | 'completed' | 'waiting_approval';
+  status: 'pending' | 'processing' | 'completed' | 'waiting_approval' | 'failed';
   description: string;
   confidence?: number;
   actionType?: string;

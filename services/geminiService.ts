@@ -205,6 +205,30 @@ export const processUserRequest = async (
   }
 };
 
+// --- FEATURE: TEXT TO SPEECH ---
+export const synthesizeSpeech = async (text: string): Promise<string | null> => {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text: text }] }],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: 'Kore' }, // 'Kore', 'Puck', 'Charon', 'Fenrir', 'Zephyr'
+          },
+        },
+      },
+    });
+    
+    // The API returns raw audio bytes in inlineData
+    return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || null;
+  } catch (e) {
+    console.error("TTS Generation failed:", e);
+    return null;
+  }
+};
+
 // --- FEATURE: AUDIO TRANSCRIPTION ---
 export const transcribeAudio = async (base64Audio: string): Promise<string> => {
   try {

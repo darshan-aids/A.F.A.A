@@ -4,9 +4,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, AreaChart, Area
 } from 'recharts';
-import { DashboardState, ProcessingStep, AgentAction } from '../types';
+import { DashboardState, ProcessingStep, AgentAction, Transaction } from '../types';
 import { MOCK_CHART_DATA } from '../constants';
-import { AgentMode } from './AgentMode';
 import { AgentManager } from '../services/agent';
 
 interface FormErrors {
@@ -29,6 +28,7 @@ interface MockFinancialDashboardProps {
   agentSteps?: ProcessingStep[];
   onSendMessage?: (message: string) => void;
   onManualAction?: (action: AgentAction) => void;
+  onTransactionClick?: (tx: Transaction) => void;
 }
 
 export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({ 
@@ -45,7 +45,8 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
   agentManager,
   agentSteps = [],
   onSendMessage,
-  onManualAction
+  onManualAction,
+  onTransactionClick
 }) => {
   
   const recipientInputRef = useRef<HTMLInputElement>(null);
@@ -54,6 +55,14 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
   const [isChartsLoaded, setIsChartsLoaded] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   
+  // New States for Fixes
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showRecipientDropdown, setShowRecipientDropdown] = useState(false);
+
+  // Mock Contacts
+  const RECIPIENTS = ['Theresa Webb', 'Marvin McKinney', 'Jenny Wilson', 'Gold Vault', 'Utility Co'];
+
   // Simulate chart loading
   useEffect(() => {
     const timer = setTimeout(() => setIsChartsLoaded(true), 1000);
@@ -66,8 +75,6 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
     const target = highlightTarget.toLowerCase();
     const id = targetId.toLowerCase();
     const lbl = label.toLowerCase();
-    
-    // Direct match, substring match, or selector-like match
     return target.includes(id) || id.includes(target) || target.includes(lbl) || (target.includes('button') && id.includes('submit'));
   };
 
@@ -103,50 +110,23 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
   // Handle keyboard navigation in transfer form
   const handleTransferFormKeyDown = (e: React.KeyboardEvent) => {
     if (!manualMode) return;
-    
     switch (e.key) {
-      case 'Tab':
-        break;
       case 'Enter':
-        e.preventDefault();
         if (e.currentTarget === recipientInputRef.current) {
+          e.preventDefault();
           amountInputRef.current?.focus();
         } else if (e.currentTarget === amountInputRef.current) {
+          e.preventDefault();
           submitButtonRef.current?.focus();
         } else if (e.currentTarget === submitButtonRef.current) {
           onTransferSubmit?.();
         }
         break;
       case 'Escape':
-        e.preventDefault();
-        onFormFieldChange?.('recipient', '');
-        onFormFieldChange?.('amount', '');
-        recipientInputRef.current?.focus();
+        setShowRecipientDropdown(false);
         break;
     }
   };
-
-  // Focus management
-  useEffect(() => {
-    if (manualMode && state.currentPage === 'transfer') {
-      recipientInputRef.current?.focus();
-    }
-  }, [manualMode, state.currentPage]);
-
-  // If in Agent Mode, render the Agent Interface
-  if ((state.currentPage as string) === 'agent-mode') {
-    return (
-      <div className="w-full h-full relative" role="main" aria-label="Agent Mode Interface">
-        <AgentMode 
-          agentManager={agentManager!} 
-          onExit={() => onNavigate?.('overview')}
-          steps={agentSteps}
-          onSendMessage={onSendMessage}
-          onManualAction={onManualAction}
-        />
-      </div>
-    );
-  }
 
   return (
     <div className="w-full h-full bg-brand-dark text-white overflow-y-auto p-4 md:p-6 lg:p-10 font-sans selection:bg-brand-lime selection:text-black pb-20 md:pb-6" role="main" aria-label="Financial Dashboard">
@@ -173,56 +153,77 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
               <NavPill id="transactions" label="Insights" active={state.currentPage === 'transactions'} />
               <NavPill id="transfer" label="Transfer" active={state.currentPage === 'transfer'} />
               <NavPill id="reports" label="Reports" active={state.currentPage === 'reports'} />
-              <NavPill id="agent-mode" label="Agents" active={state.currentPage === 'agent-mode'} />
+              {/* Agent Mode Hidden for End Users */}
              </div>
           </div>
         </div>
 
         {/* User Actions */}
         <div className="flex items-center gap-3 md:gap-4 self-end md:self-auto relative">
-          <button className="w-10 h-10 rounded-full border border-slate-700 flex items-center justify-center text-slate-400 hover:text-white hover:border-brand-lime transition-all focus:outline-none focus:ring-2 focus:ring-brand-lime focus:ring-opacity-50" aria-label="Search">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </button>
-          <button 
-             onClick={() => setShowNotifications(!showNotifications)}
-             className={`w-10 h-10 rounded-full border flex items-center justify-center hover:text-white hover:border-brand-lime relative transition-all focus:outline-none focus:ring-2 focus:ring-brand-lime focus:ring-opacity-50 ${showNotifications ? 'border-brand-lime text-white' : 'border-slate-700 text-slate-400'}`} aria-label="Notifications">
-             <div className="absolute top-2 right-2.5 w-2 h-2 bg-brand-lime rounded-full border border-brand-dark animate-pulse"></div>
-             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-            </svg>
-          </button>
+          
+          {/* Search Bar */}
+          <div className={`flex items-center bg-[#1C1C21] rounded-full border border-slate-700 transition-all overflow-hidden ${isSearchOpen ? 'w-48 pl-3' : 'w-10 h-10 justify-center'}`}>
+              <button onClick={() => setIsSearchOpen(!isSearchOpen)} className="text-slate-400 hover:text-white focus:outline-none focus:ring-2 focus:ring-brand-lime" aria-label="Toggle Search">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </button>
+              {isSearchOpen && (
+                 <input 
+                    type="text" 
+                    autoFocus 
+                    placeholder="Search..." 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="bg-transparent border-none focus:outline-none text-sm text-white px-2 w-full h-10"
+                    onBlur={() => !searchQuery && setIsSearchOpen(false)}
+                 />
+              )}
+          </div>
 
-          {/* Notification Popup */}
-          {showNotifications && (
-            <div className="absolute top-14 right-0 md:right-16 w-80 md:w-96 bg-[#1C1C21] border border-[#25252b] rounded-2xl shadow-2xl z-50 overflow-hidden animate-[fadeIn_0.2s_ease-out] text-slate-200 ring-1 ring-white/10 origin-top-right">
-              <div className="p-4 border-b border-[#25252b] flex justify-between items-center bg-[#1C1C21]">
-                  <h3 className="font-bold text-base text-white">AI Notification Center</h3>
-                  <button className="text-xs font-medium text-slate-400 hover:text-white border border-[#333] hover:border-[#555] px-2 py-1 rounded transition-colors">See All</button>
+          {/* Notifications */}
+          <div className="relative">
+            <button 
+               onClick={() => setShowNotifications(!showNotifications)}
+               className={`w-10 h-10 rounded-full border flex items-center justify-center hover:text-white hover:border-brand-lime transition-all focus:outline-none focus:ring-2 focus:ring-brand-lime focus:ring-opacity-50 ${showNotifications ? 'border-brand-lime text-white' : 'border-slate-700 text-slate-400'}`} aria-label="Notifications">
+               <div className="absolute top-2 right-2.5 w-2 h-2 bg-brand-lime rounded-full border border-brand-dark animate-pulse"></div>
+               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              </svg>
+            </button>
+
+            {/* Notification Popup */}
+            {showNotifications && (
+              <div className="absolute top-12 right-0 md:right-0 w-80 md:w-96 bg-[#1C1C21] border border-[#25252b] rounded-2xl shadow-2xl z-[150] overflow-hidden animate-[fadeIn_0.2s_ease-out] text-slate-200 ring-1 ring-white/10 origin-top-right">
+                <div className="p-4 border-b border-[#25252b] flex justify-between items-center bg-[#1C1C21]">
+                    <h3 className="font-bold text-base text-white">Notifications</h3>
+                    <button 
+                      onClick={() => setShowNotifications(false)} 
+                      className="text-slate-400 hover:text-white p-2 hover:bg-[#25252b] rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-brand-lime"
+                      aria-label="Close Notifications"
+                    >
+                      ✕
+                    </button>
+                </div>
+                <div className="max-h-[24rem] overflow-y-auto bg-[#1C1C21] scrollbar-thin scrollbar-thumb-slate-700">
+                    <div className="p-4 border-b border-[#25252b] hover:bg-[#25252b]/50 transition-colors cursor-pointer group">
+                        <div className="flex gap-3">
+                            <div className="w-9 h-9 rounded-full bg-[#151518] border border-[#25252b] shadow-sm flex items-center justify-center text-slate-400 flex-shrink-0 group-hover:border-slate-600 transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                            </div>
+                            <div className="flex-1">
+                                <div className="flex justify-between items-start mb-1">
+                                    <h4 className="text-sm font-bold text-slate-200 group-hover:text-white transition-colors">System Update</h4>
+                                    <span className="text-[10px] text-slate-500 font-mono">1h ago</span>
+                                </div>
+                                <p className="text-xs text-slate-400 leading-relaxed group-hover:text-slate-300">Accessibility engine updated to v2.4. Agent response time improved.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
               </div>
-              <div className="px-4 py-2 bg-[#151518] flex gap-2 text-xs font-medium border-b border-[#25252b]">
-                  <button className="px-3 py-1 bg-[#25252b] rounded-md shadow-sm text-white border border-[#333]">Today</button>
-                  <button className="px-3 py-1 text-slate-500 hover:text-slate-300 hover:bg-[#1C1C21] rounded-md transition-colors">This Week</button>
-              </div>
-              <div className="max-h-[24rem] overflow-y-auto bg-[#1C1C21] scrollbar-thin scrollbar-thumb-slate-700">
-                  <div className="p-4 border-b border-[#25252b] hover:bg-[#25252b]/50 transition-colors cursor-pointer group">
-                      <div className="flex gap-3">
-                          <div className="w-9 h-9 rounded-full bg-[#151518] border border-[#25252b] shadow-sm flex items-center justify-center text-slate-400 flex-shrink-0 group-hover:border-slate-600 transition-colors">
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
-                          </div>
-                          <div className="flex-1">
-                              <div className="flex justify-between items-start mb-1">
-                                  <h4 className="text-sm font-bold text-slate-200 group-hover:text-white transition-colors">Your AI Just Got Smarter</h4>
-                                  <span className="text-[10px] text-slate-500 font-mono">1h ago</span>
-                              </div>
-                              <p className="text-xs text-slate-400 leading-relaxed group-hover:text-slate-300">Adaptive learning speed increased by 27%.</p>
-                          </div>
-                      </div>
-                  </div>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
 
           <button 
             onClick={() => onNavigate?.('profile')}
@@ -241,7 +242,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
           {/* Welcome Message */}
           <div className="mb-2">
             <p className="text-slate-400 text-sm mb-1">Welcome back,</p>
-            <h1 className="text-3xl md:text-4xl lg:text-5xl font-light text-white tracking-tight">
+            <h1 className="text-3xl md:text-4xl lg:text-5xl font-light text-white tracking-normal truncate">
               Darlene <span className="font-semibold">Robertson</span>
             </h1>
           </div>
@@ -249,8 +250,15 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
           {/* QUICK ACTIONS ROW */}
           <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
              <button 
-               onClick={() => { onNavigate?.('transfer'); onFormFieldChange?.('note', 'Electricity Bill'); }}
-               className="relative group bg-[#1C1C21] border border-[#25252b] hover:border-brand-lime hover:bg-[#25252b] rounded-xl px-5 py-3 flex items-center gap-3 transition-all min-w-max"
+               onClick={() => { 
+                   onNavigate?.('transfer'); 
+                   // Use a slightly longer timeout to ensure page transition completes before setting state
+                   setTimeout(() => {
+                       onFormFieldChange?.('recipient', 'Utility Co'); 
+                       onFormFieldChange?.('note', 'Electricity Bill'); 
+                   }, 150);
+               }}
+               className="relative group bg-[#1C1C21] border border-[#25252b] hover:border-brand-lime hover:bg-[#25252b] rounded-xl px-5 py-3 flex items-center gap-3 transition-all min-w-max focus:outline-none focus:ring-2 focus:ring-brand-lime"
              >
                 {renderHighlight('pay bill', 'ACTION')}
                 <div className="p-2 bg-brand-lime/10 text-brand-lime rounded-lg group-hover:bg-brand-lime group-hover:text-black transition-colors">
@@ -263,8 +271,8 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
              </button>
 
              <button 
-               onClick={() => { onNavigate?.('transfer'); onFormFieldChange?.('recipient', 'Gold Vault'); }}
-               className="relative group bg-[#1C1C21] border border-[#25252b] hover:border-brand-lime hover:bg-[#25252b] rounded-xl px-5 py-3 flex items-center gap-3 transition-all min-w-max"
+               onClick={() => { onNavigate?.('transfer'); setTimeout(() => onFormFieldChange?.('recipient', 'Gold Vault'), 150); }}
+               className="relative group bg-[#1C1C21] border border-[#25252b] hover:border-brand-lime hover:bg-[#25252b] rounded-xl px-5 py-3 flex items-center gap-3 transition-all min-w-max focus:outline-none focus:ring-2 focus:ring-brand-lime"
              >
                 {renderHighlight('invest', 'ACTION')}
                 <div className="p-2 bg-brand-orange/10 text-brand-orange rounded-lg group-hover:bg-brand-orange group-hover:text-white transition-colors">
@@ -278,7 +286,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
 
              <button 
                onClick={() => onNavigate?.('reports')}
-               className="relative group bg-[#1C1C21] border border-[#25252b] hover:border-brand-lime hover:bg-[#25252b] rounded-xl px-5 py-3 flex items-center gap-3 transition-all min-w-max"
+               className="relative group bg-[#1C1C21] border border-[#25252b] hover:border-brand-lime hover:bg-[#25252b] rounded-xl px-5 py-3 flex items-center gap-3 transition-all min-w-max focus:outline-none focus:ring-2 focus:ring-brand-lime"
              >
                 {renderHighlight('tax docs', 'ACTION')}
                 <div className="p-2 bg-brand-cyan/10 text-brand-cyan rounded-lg group-hover:bg-brand-cyan group-hover:text-black transition-colors">
@@ -291,7 +299,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
              </button>
           </div>
 
-          {/* Stats Cards Grid */}
+          {/* Stats Cards Grid - Standardized Padding & Margins (ISSUE 39) */}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6 mb-6 md:mb-8">
             {/* Main Account Card */}
             <div className="bg-brand-card p-6 md:p-8 rounded-[2rem] md:rounded-[2.5rem] relative group hover:bg-[#25252b] transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-brand-lime focus:ring-opacity-50" tabIndex={0} aria-label={`Main Account Balance: $${state.balance.toLocaleString()}`}>
@@ -305,9 +313,13 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                   </div>
                   <span className="text-slate-300 font-medium group-hover:text-white transition-colors">Main Account</span>
                 </div>
-                <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-white text-black flex items-center justify-center transform -rotate-45 group-hover:rotate-0 transition-transform shadow-lg text-sm md:text-base" aria-hidden="true">
+                <button 
+                  onClick={() => onNavigate?.('transactions')} 
+                  className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-white text-black flex items-center justify-center transform -rotate-45 hover:rotate-0 transition-transform shadow-lg text-sm md:text-base cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-lime"
+                  aria-label="View Transactions"
+                >
                   ➜
-                </div>
+                </button>
               </div>
               <div className="text-2xl md:text-3xl lg:text-4xl font-medium mb-3 tracking-tight text-white">
                  ${state.balance.toLocaleString()}
@@ -334,9 +346,13 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                   </div>
                   <span className="text-slate-300 font-medium group-hover:text-white transition-colors">Monthly Spend</span>
                 </div>
-                <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-white text-black flex items-center justify-center transform -rotate-45 group-hover:rotate-0 transition-transform shadow-lg text-sm md:text-base" aria-hidden="true">
+                <button 
+                  onClick={() => onNavigate?.('transactions')} 
+                  className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-white text-black flex items-center justify-center transform -rotate-45 hover:rotate-0 transition-transform shadow-lg text-sm md:text-base cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-lime"
+                  aria-label="View Spending Details"
+                >
                   ➜
-                </div>
+                </button>
               </div>
               <div className="text-2xl md:text-3xl lg:text-4xl font-medium mb-3 tracking-tight text-white">
                 $296,241
@@ -363,12 +379,17 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                   </div>
                   <span className="text-black/80 font-semibold group-hover:text-black transition-colors">Company</span>
                 </div>
-                <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-black text-brand-lime flex items-center justify-center transform -rotate-45 group-hover:rotate-0 transition-transform text-sm md:text-base" aria-hidden="true">
+                <button 
+                  onClick={() => onNavigate?.('reports')} 
+                  className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-black text-brand-lime flex items-center justify-center transform -rotate-45 hover:rotate-0 transition-transform text-sm md:text-base cursor-pointer focus:outline-none focus:ring-2 focus:ring-black"
+                  aria-label="View Company Reports"
+                >
                   ➜
-                </div>
+                </button>
               </div>
               <div className="text-2xl md:text-3xl lg:text-4xl font-bold mb-3 tracking-tight">
-                76,314
+                {/* ISSUE 31 FIX: Added currency symbol */}
+                $76,314
               </div>
               <div className="text-xs text-black/80 font-bold font-mono flex items-center gap-1">
                 <span className="flex items-center gap-1" aria-label="Down 18.4 percent">
@@ -389,11 +410,6 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                    Financial Overview
                    <span className="text-xs font-normal text-slate-500 bg-[#25252b] px-2 py-1 rounded-full">YTD 2024</span>
                 </h3>
-                <div className="flex gap-2">
-                   <div className="flex items-center gap-2 text-xs text-slate-400">
-                      <span className="w-3 h-3 rounded-full bg-brand-lime"></span> Revenue
-                   </div>
-                </div>
              </div>
              
              <div className="h-64 md:h-80 w-full">
@@ -441,92 +457,42 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
 
           {/* New Analytics Section */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-            
-            {/* Analytics Line Chart (Dark) */}
             <div className="bg-brand-card p-6 md:p-8 rounded-[2rem] border border-[#25252b] relative group hover:border-slate-700 transition-colors flex flex-col h-80">
                <div className="flex justify-between items-start mb-4">
                   <div>
                     <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Analytics</h3>
                     <div className="text-3xl font-bold text-white">4K+</div>
                   </div>
-                  <div className="p-2 bg-[#25252b] rounded-full">
-                     <svg className="w-5 h-5 text-brand-lime" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
-                  </div>
                </div>
                <div className="flex-1 min-h-0 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                     <LineChart data={[
-                        { name: 'Jan', value: 1200 },
-                        { name: 'Feb', value: 2100 },
-                        { name: 'Mar', value: 1800 },
-                        { name: 'Apr', value: 3200 },
-                        { name: 'May', value: 4800 },
-                        { name: 'Jun', value: 2400 },
-                        { name: 'Jul', value: 2800 },
-                     ]}>
+                     <LineChart data={[{ name: 'Jan', value: 1200 }, { name: 'Feb', value: 2100 }, { name: 'Mar', value: 1800 }, { name: 'Apr', value: 3200 }, { name: 'May', value: 4800 }, { name: 'Jun', value: 2400 }, { name: 'Jul', value: 2800 }]}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#333" />
                         <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 10}} dy={10} hide />
-                        <Tooltip 
-                           contentStyle={{backgroundColor: '#1C1C21', border: '1px solid #333', borderRadius: '8px'}}
-                           itemStyle={{color: '#D2F159'}}
-                           cursor={{stroke: '#333'}}
-                        />
+                        <Tooltip contentStyle={{backgroundColor: '#1C1C21', border: '1px solid #333', borderRadius: '8px'}} itemStyle={{color: '#D2F159'}} cursor={{stroke: '#333'}} />
                         <Line type="monotone" dataKey="value" stroke="#D2F159" strokeWidth={3} dot={{r: 4, fill: '#1C1C21', stroke: '#D2F159', strokeWidth: 2}} activeDot={{r: 6}} />
                      </LineChart>
                   </ResponsiveContainer>
                </div>
-               <div className="flex justify-between mt-2 text-[10px] text-slate-500 font-mono uppercase">
-                  <span>Jan-Mar</span>
-                  <span>Apr-Jun</span>
-                  <span>Jul-Sep</span>
-                  <span>Oct-Dec</span>
-               </div>
             </div>
 
-            {/* Analytics Bar Chart (Orange) */}
             <div className="bg-brand-orange p-6 md:p-8 rounded-[2rem] border border-brand-orange relative group shadow-[0_10px_40px_rgba(255,107,53,0.2)] flex flex-col h-80">
                <div className="flex justify-between items-start mb-4">
                   <div>
                     <h3 className="text-xs font-bold text-black/60 uppercase tracking-widest mb-1">Analytics</h3>
                     <div className="text-3xl font-bold text-black">5K+</div>
                   </div>
-                  <button className="px-3 py-1 bg-black/10 rounded-full text-[10px] font-bold text-black hover:bg-black/20 transition-colors flex items-center gap-1">
-                     This Week <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                  </button>
                </div>
                <div className="flex-1 min-h-0 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                     <BarChart data={[
-                        { day: 'Sat', value: 2000 },
-                        { day: 'Sun', value: 1200 },
-                        { day: 'Mon', value: 4000 },
-                        { day: 'Tue', value: 2500 },
-                        { day: 'Wed', value: 6000 },
-                        { day: 'Thu', value: 3000 },
-                        { day: 'Fri', value: 4500 },
-                     ]} barSize={12}>
-                        <Tooltip 
-                           contentStyle={{backgroundColor: '#000', border: 'none', borderRadius: '8px', color: '#fff'}}
-                           itemStyle={{color: '#fff'}}
-                           cursor={{fill: 'rgba(0,0,0,0.1)'}}
-                        />
+                     <BarChart data={[{ day: 'Sat', value: 2000 }, { day: 'Sun', value: 1200 }, { day: 'Mon', value: 4000 }, { day: 'Tue', value: 2500 }, { day: 'Wed', value: 6000 }, { day: 'Thu', value: 3000 }, { day: 'Fri', value: 4500 }]} barSize={12}>
+                        <Tooltip contentStyle={{backgroundColor: '#000', border: 'none', borderRadius: '8px', color: '#fff'}} itemStyle={{color: '#fff'}} cursor={{fill: 'rgba(0,0,0,0.1)'}} />
                         <Bar dataKey="value" fill="#1C1C21" radius={[10, 10, 10, 10]} />
                      </BarChart>
                   </ResponsiveContainer>
                </div>
-               <div className="flex justify-between mt-2 text-[10px] text-black/60 font-mono uppercase px-2">
-                  <span>Sat</span>
-                  <span>Sun</span>
-                  <span>Mon</span>
-                  <span>Tue</span>
-                  <span>Wed</span>
-                  <span>Thu</span>
-                  <span>Fri</span>
-               </div>
             </div>
-
           </div>
-
         </div>
       )}
 
@@ -552,7 +518,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                     <label className="block text-xs uppercase tracking-widest text-slate-500 mb-2 md:mb-3 font-bold group-hover:text-brand-lime transition-colors">
                       Recipient
                     </label>
-                    <div className={`flex items-center gap-3 md:gap-4 bg-[#151518] p-4 md:p-5 rounded-[1.5rem] border transition-all ${
+                    <div className={`flex items-center gap-3 md:gap-4 bg-[#151518] p-4 md:p-5 rounded-[1.5rem] border transition-all relative ${
                       formErrors.recipient 
                         ? 'border-red-500/50 bg-red-500/5' 
                         : 'border-transparent group-focus-within:border-brand-lime/50'
@@ -574,12 +540,31 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                        />
                        <button 
                          type="button" 
-                         className="w-6 h-6 md:w-8 md:h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 hover:bg-slate-700 transition-colors text-xs md:text-sm" 
+                         onClick={() => setShowRecipientDropdown(!showRecipientDropdown)}
+                         className="w-6 h-6 md:w-8 md:h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 hover:bg-slate-700 transition-colors text-xs md:text-sm cursor-pointer" 
                          aria-label="Select Recipient"
                          disabled={!manualMode}
                        >
                          ▼
                        </button>
+
+                       {/* Recipient Dropdown */}
+                       {showRecipientDropdown && (
+                         <div className="absolute top-full mt-2 left-0 right-0 bg-[#1C1C21] border border-[#333] rounded-xl shadow-2xl z-[100] overflow-hidden animate-[fadeIn_0.2s_ease-out]">
+                             {RECIPIENTS.map(r => (
+                                 <div 
+                                    key={r} 
+                                    onClick={() => {
+                                        onFormFieldChange?.('recipient', r);
+                                        setShowRecipientDropdown(false);
+                                    }}
+                                    className="p-3 hover:bg-[#25252b] cursor-pointer text-sm text-slate-300 hover:text-white transition-colors border-b border-[#25252b] last:border-0"
+                                 >
+                                    {r}
+                                 </div>
+                             ))}
+                         </div>
+                       )}
                     </div>
                     {formErrors.recipient && (
                       <p className="text-red-400 text-xs mt-2 flex items-center gap-1">
@@ -626,7 +611,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                     )}
                  </div>
 
-                 {/* Submit Button */}
+                 {/* Submit Button (ISSUE 42 FIX: Added focus ring offset) */}
                  <div className="pt-4 md:pt-6 relative" data-target="submit">
                     {renderHighlight('submit', 'EXECUTE')}
                     <button 
@@ -634,7 +619,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                       type="submit"
                       onKeyDown={handleTransferFormKeyDown}
                       disabled={!manualMode || isSubmittingTransfer}
-                      className="w-full bg-brand-lime text-black py-4 md:py-5 rounded-[1.5rem] font-bold text-base md:text-lg hover:bg-[#dfff6b] transition-all hover:scale-[1.02] shadow-[0_0_30px_rgba(210,241,89,0.3)] hover:shadow-[0_0_40px_rgba(210,241,89,0.4)] flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-brand-lime focus:ring-opacity-50"
+                      className="w-full bg-brand-lime text-black py-4 md:py-5 rounded-[1.5rem] font-bold text-base md:text-lg hover:bg-[#dfff6b] transition-all hover:scale-[1.02] shadow-[0_0_30px_rgba(210,241,89,0.3)] hover:shadow-[0_0_40px_rgba(210,241,89,0.4)] flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-brand-lime focus:ring-offset-2 focus:ring-offset-[#0F0F12] active:scale-95"
                     >
                        {isSubmittingTransfer ? (
                          <>
@@ -652,7 +637,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                     </button>
                     {!manualMode && (
                       <p className="text-xs text-slate-500 text-center mt-3">
-                        Enable Manual Mode to use this form directly
+                        Enable Manual Mode (Top Right) to use this form directly
                       </p>
                     )}
                  </div>
@@ -661,7 +646,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
         </div>
       )}
 
-      {/* Reports Page (and other pages omitted for brevity as they are unchanged) */}
+      {/* Reports Page */}
       {state.currentPage === 'reports' && (
         <div className="flex flex-col items-center justify-center h-full animate-[fadeIn_0.5s_ease-out] text-center p-8" role="region" aria-label="Financial Reports">
             <div className="w-24 h-24 rounded-full bg-brand-card flex items-center justify-center mb-6 shadow-2xl">
@@ -670,13 +655,9 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                 </svg>
             </div>
             <h2 className="text-3xl font-light text-white mb-2">Financial <span className="text-brand-lime font-bold">Reports</span></h2>
-            <p className="text-slate-400 max-w-md mx-auto mb-8">
-                Access detailed statements, tax documents, and spending analysis. 
-                <br/><span className="text-xs text-slate-600 mt-2 block">(Mock Interface)</span>
-            </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
                 {['2024 Tax Documents', 'Q3 Financial Statement', 'Spending Analysis', 'Asset Allocation'].map((item) => (
-                    <div key={item} className="bg-brand-card hover:bg-[#25252b] p-4 rounded-xl flex items-center justify-between cursor-pointer group transition-colors">
+                    <div key={item} className="bg-brand-card hover:bg-[#25252b] p-4 rounded-xl flex items-center justify-between cursor-pointer group transition-colors hover:ring-2 hover:ring-brand-lime">
                         <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full bg-[#151518] flex items-center justify-center group-hover:bg-brand-lime group-hover:text-black transition-colors">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -706,7 +687,7 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                {onFileUpload && (
                   <div className="relative">
                     <button 
-                      className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#3e4836] text-[#D2F159] hover:bg-[#D2F159] hover:text-black transition-all text-sm font-medium border border-[#D2F159]/20"
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#3e4836] text-[#D2F159] hover:bg-[#D2F159] hover:text-black transition-all text-sm font-medium border border-[#D2F159]/20 focus:outline-none focus:ring-2 focus:ring-brand-lime"
                       onClick={() => document.getElementById('file-upload')?.click()} 
                       aria-label="Upload a bank statement"
                     >
@@ -718,28 +699,33 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                )}
             </div>
 
-            {/* Table Container */}
+            {/* Table Container - Fixed column widths */}
             <div className="flex-1 overflow-hidden bg-transparent">
                <div className="h-full overflow-y-auto pr-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-700">
                   <table className="w-full text-left border-collapse">
                      <thead className="sticky top-0 bg-[#0F0F12] z-10">
                        <tr className="text-slate-500 text-[10px] uppercase tracking-widest border-b border-slate-800">
-                         <th className="px-4 py-4 font-bold w-[30%]" scope="col">Transaction</th>
-                         <th className="px-4 py-4 font-bold w-[20%] hidden md:table-cell" scope="col">Category</th>
-                         <th className="px-4 py-4 font-bold w-[15%] hidden sm:table-cell" scope="col">Date</th>
-                         <th className="px-4 py-4 text-right font-bold w-[20%]" scope="col">Amount</th>
-                         <th className="px-4 py-4 text-center font-bold w-[15%] hidden lg:table-cell" scope="col">Status</th>
+                         <th className="px-4 py-4 font-bold min-w-[150px]" scope="col">Transaction</th>
+                         <th className="px-4 py-4 font-bold hidden md:table-cell" scope="col">Category</th>
+                         <th className="px-4 py-4 font-bold hidden sm:table-cell" scope="col">Date</th>
+                         <th className="px-4 py-4 text-right font-bold min-w-[100px]" scope="col">Amount</th>
+                         <th className="px-4 py-4 text-center font-bold hidden lg:table-cell" scope="col">Status</th>
                        </tr>
                      </thead>
                      <tbody className="divide-y divide-slate-800/50">
                         {state.transactions.map((tx) => (
-                           <tr key={tx.id} className="hover:bg-white/5 transition-colors group">
+                           <tr 
+                             key={tx.id} 
+                             onClick={() => onTransactionClick?.(tx)}
+                             className="hover:bg-white/5 transition-colors group cursor-pointer focus-within:bg-white/5 outline-none"
+                             tabIndex={0}
+                           >
                               {/* Transaction Name & Icon */}
                               <td className="px-4 py-4 align-middle">
                                  <div className="flex items-center gap-4">
                                     <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
                                        tx.type === 'credit' 
-                                          ? 'bg-[#1E3A2F] text-[#00D084]' // Dark green bg, bright green icon
+                                          ? 'bg-[#1E3A2F] text-[#00D084]' 
                                           : 'bg-[#2A2A30] text-slate-400'
                                     }`}>
                                        {tx.type === 'credit' ? (
@@ -748,19 +734,19 @@ export const MockFinancialDashboard: React.FC<MockFinancialDashboardProps> = ({
                                           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" /></svg>
                                        )}
                                     </div>
-                                    <span className="font-bold text-slate-200 text-sm md:text-base truncate">{tx.description}</span>
+                                    <span className="font-bold text-slate-200 text-sm md:text-base truncate max-w-[150px]">{tx.description}</span>
                                  </div>
                               </td>
 
                               {/* Category */}
                               <td className="px-4 py-4 hidden md:table-cell align-middle">
-                                 <span className="px-3 py-1 rounded-full bg-[#1C1C21] border border-[#2A2A30] text-xs text-slate-400 font-medium">
+                                 <span className="px-3 py-1 rounded-full bg-[#1C1C21] border border-[#2A2A30] text-xs text-slate-400 font-medium whitespace-nowrap">
                                     {tx.category}
                                  </span>
                               </td>
 
                               {/* Date */}
-                              <td className="px-4 py-4 text-slate-500 font-medium text-xs md:text-sm hidden sm:table-cell align-middle">
+                              <td className="px-4 py-4 text-slate-500 font-medium text-xs md:text-sm hidden sm:table-cell align-middle whitespace-nowrap">
                                  {tx.date}
                               </td>
 

@@ -17,6 +17,7 @@ export const AgentStatusPanel: React.FC<AgentStatusPanelProps> = ({ steps }) => 
 
   const getAgentIcon = (agent: AgentType, status: string) => {
     if (status === 'waiting_approval') return '🛡️';
+    if (status === 'failed') return '❌';
     switch (agent) {
       case AgentType.MANAGER: return status === 'processing' ? '🔍' : '💡';
       case AgentType.INTERPRETER: return '👁️';
@@ -45,7 +46,11 @@ export const AgentStatusPanel: React.FC<AgentStatusPanelProps> = ({ steps }) => 
       {steps.map((step, idx) => (
         <div 
           key={idx} 
-          className={`relative pl-4 border-l-2 ${step.status === 'processing' ? 'border-l-brand-cyan animate-pulse' : 'border-l-slate-800'} pb-2 last:pb-0`}
+          className={`relative pl-4 border-l-2 ${
+            step.status === 'processing' ? 'border-l-brand-cyan animate-pulse' : 
+            step.status === 'failed' ? 'border-l-red-500' :
+            'border-l-slate-800'
+          } pb-2 last:pb-0`}
           role="listitem"
         >
           {/* Header Line */}
@@ -64,7 +69,11 @@ export const AgentStatusPanel: React.FC<AgentStatusPanelProps> = ({ steps }) => 
           </div>
 
           {/* Description */}
-          <div className={`text-sm leading-snug pl-6 ${step.status === 'completed' ? 'text-slate-400' : 'text-slate-200'}`}>
+          <div className={`text-sm leading-snug pl-6 ${
+            step.status === 'completed' ? 'text-slate-400' : 
+            step.status === 'failed' ? 'text-red-400' :
+            'text-slate-200'
+          }`}>
             {step.description}
           </div>
 

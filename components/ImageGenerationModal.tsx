@@ -63,13 +63,15 @@ export const ImageGenerationModal: React.FC<ImageGenerationModalProps> = ({ onCl
           <button 
             onClick={handleGenerate}
             disabled={loading || !prompt}
-            className="mt-auto bg-brand-purple hover:bg-purple-500 text-white py-3 rounded-lg font-bold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="mt-auto bg-brand-purple hover:bg-purple-500 text-white py-3 rounded-lg font-bold text-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {loading ? (
               <>
                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                  Generating...
               </>
+            ) : !prompt ? (
+               'Enter Prompt' 
             ) : (
               'Generate Asset'
             )}
