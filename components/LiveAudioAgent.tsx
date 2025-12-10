@@ -53,7 +53,7 @@ export const LiveAudioAgent: React.FC<LiveAudioAgentProps> = ({ onClose }) => {
             speechConfig: {
               voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
             },
-            systemInstruction: "You are A.F.A.A., a helpful financial assistant. Keep responses concise.",
+            systemInstruction: "You are A.F.A.A., the Autonomous Financial Accessibility Agent. You are part of the A.F.A.A. Project demonstrating accessible financial interfaces. Keep responses concise.",
           },
           callbacks: {
             onopen: () => {

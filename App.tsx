@@ -4,7 +4,7 @@ import { processUserRequest, AgentResponse, transcribeAudio, analyzeImage } from
 import { MockFinancialDashboard } from './components/MockFinancialDashboard';
 import { AgentStatusPanel } from './components/AgentStatusPanel';
 import { SafetyModal, TransactionPreview } from './components/SafetyModal';
-import { ChatMessage, DashboardState, AgentType, ProcessingStep, SafetyStatus, AgentAction } from './types';
+import { ChatMessage, DashboardState, AgentType, ProcessingStep, SafetyStatus, AgentAction, BrowserResult } from './types';
 import { MOCK_TRANSACTIONS } from './constants';
 import { detectNavigationTarget, AVAILABLE_PAGES } from './navigationMap';
 import { BrowserAutomationEngine, AutomationAction } from './automationEngine';
@@ -96,12 +96,42 @@ const App: React.FC = () => {
         setActiveHighlight(action.elementText); 
       }
       
-      addStep(AgentType.EXECUTOR, 'processing', `Executing: ${action.type}`);
+      let initialPayload = undefined;
+      // Provide an initial loading payload for BROWSE actions so the browser window appears immediately
+      if (action.type === 'BROWSE' || action.type === 'READ_PAGE') {
+         initialPayload = {
+             url: action.url || 'about:blank',
+             text: '',
+             links: [],
+             screenshot: undefined,
+             timestamp: new Date().toISOString()
+         };
+      }
+      
+      addStep(AgentType.EXECUTOR, 'processing', `Executing: ${action.type}`, undefined, action.type, initialPayload);
     };
 
     const handleActionEnd = (e: CustomEvent<{action: AutomationAction, result: any}>) => {
       const { action, result } = e.detail;
-      updateLastStepStatus(result.success ? 'completed' : 'waiting_approval'); 
+      
+      // Construct rich payload if available
+      let payload = undefined;
+      if ((action.type === 'BROWSE' || action.type === 'READ_PAGE' || action.type === 'SCREENSHOT')) {
+         if (result.data || result.screenshot) {
+             payload = {
+                 url: action.url || result.data?.url || 'about:blank',
+                 text: result.data?.text,
+                 links: result.data?.links,
+                 screenshot: result.screenshot,
+                 timestamp: result.timestamp
+             };
+         }
+      }
+
+      updateLastStep({ 
+          status: result.success ? 'completed' : 'waiting_approval',
+          payload
+      }); 
       
       setTimeout(() => {
         setActiveHighlight(null);
@@ -223,10 +253,10 @@ const App: React.FC = () => {
     try {
        const analysis = await analyzeImage(file);
        setMessages(prev => [...prev, { id: Date.now().toString(), sender: AgentType.INTERPRETER, content: analysis, timestamp: new Date() }]);
-       updateLastStepStatus('completed');
+       updateLastStep({ status: 'completed' });
     } catch (e) {
        console.error(e);
-       updateLastStepStatus('completed');
+       updateLastStep({ status: 'completed' });
        setMessages(prev => [...prev, { id: Date.now().toString(), sender: AgentType.INTERPRETER, content: "Failed to analyze image.", timestamp: new Date() }]);
     }
     
@@ -300,7 +330,7 @@ const App: React.FC = () => {
           useSearch: true // Always ground if useful
         }
       );
-      updateLastStepStatus('completed');
+      updateLastStep({ status: 'completed' });
 
       if (response.safety === SafetyStatus.REQUIRE_CONFIRMATION) {
         setTransactionPreview(extractTransactionDetails(response.actions, dashboardState));
@@ -348,9 +378,27 @@ const App: React.FC = () => {
       const automationActions = ['SCREENSHOT', 'READ_PAGE', 'SCROLL', 'WAIT', 'VERIFY', 'HOVER', 'GET_ELEMENT_VALUE', 'WAIT_FOR_SELECTOR', 'BROWSE'];
       
       if (automationActions.includes(action.type)) {
-        addStep(AgentType.INTERPRETER, 'processing', `Executing ${action.type}...`, confidence);
+        addStep(AgentType.INTERPRETER, 'processing', `Executing ${action.type}...`, confidence, action.type);
         const report = await automationEngine.current.executeActions([action as any]);
-        updateLastStepStatus('completed');
+        
+        // Update payload if browse data exists
+        const result = report.results[0];
+        let payload = undefined;
+        if (action.type === 'BROWSE' && result?.success && result.data) {
+             payload = {
+                 url: action.url || result.data?.url || 'about:blank',
+                 text: result.data?.text,
+                 links: result.data?.links,
+                 screenshot: result.screenshot,
+                 timestamp: result.timestamp
+             };
+        }
+
+        updateLastStep({ 
+           status: 'completed', 
+           payload
+        });
+        
         await delay(500);
         continue;
       }
@@ -361,13 +409,13 @@ const App: React.FC = () => {
           const detected = detectNavigationTarget(rawTarget || action.description || '');
           let targetPageId = detected ? detected.id : rawTarget || 'overview';
           
-          addStep(AgentType.EXECUTOR, 'processing', `Navigating to ${targetPageId}...`, confidence);
+          addStep(AgentType.EXECUTOR, 'processing', `Navigating to ${targetPageId}...`, confidence, 'NAVIGATE');
           await automationEngine.current.executeActions([{ type: 'NAVIGATE', page: targetPageId, url: action.url }]);
-          updateLastStepStatus('completed');
+          updateLastStep({ status: 'completed' });
           break;
 
         case 'FILL_INPUT':
-          addStep(AgentType.EXECUTOR, 'processing', `Typing "${action.value}" into ${action.target}...`, confidence);
+          addStep(AgentType.EXECUTOR, 'processing', `Typing "${action.value}" into ${action.target}...`, confidence, 'FILL_INPUT');
           
           let selector = '';
           if (action.target?.includes('recipient')) selector = 'input[placeholder*="Search"]';
@@ -385,22 +433,22 @@ const App: React.FC = () => {
               return { ...prev, transferForm: newState };
             });
           }
-          updateLastStepStatus('completed');
+          updateLastStep({ status: 'completed' });
           break;
 
         case 'CLICK':
-           addStep(AgentType.EXECUTOR, 'processing', `Clicking ${action.target}...`, confidence);
+           addStep(AgentType.EXECUTOR, 'processing', `Clicking ${action.target}...`, confidence, 'CLICK');
            if (action.target?.toLowerCase().includes('submit')) {
              await automationEngine.current.executeActions([{ type: 'CLICK', selector: 'button[type="submit"]' }]);
            }
-           updateLastStepStatus('completed');
+           updateLastStep({ status: 'completed' });
            break;
 
         case 'ANALYZE_CHART':
           setIsScanning(true);
-          addStep(AgentType.INTERPRETER, 'processing', 'Scanning analytics...', confidence);
+          addStep(AgentType.INTERPRETER, 'processing', 'Scanning analytics...', confidence, 'ANALYZE_CHART');
           await delay(2000);
-          updateLastStepStatus('completed');
+          updateLastStep({ status: 'completed' });
           setIsScanning(false);
           break;
       }
@@ -445,11 +493,16 @@ const App: React.FC = () => {
   };
 
   const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
-  const addStep = (agent: AgentType, status: ProcessingStep['status'], description: string, confidence?: number) => {
-    setAgentSteps(prev => [...prev, { agent, status, description, confidence }]);
+  const addStep = (agent: AgentType, status: ProcessingStep['status'], description: string, confidence?: number, actionType?: string, payload?: BrowserResult | null) => {
+    setAgentSteps(prev => [...prev, { agent, status, description, confidence, actionType, payload }]);
   };
-  const updateLastStepStatus = (status: ProcessingStep['status']) => {
-    setAgentSteps(prev => { const n = [...prev]; if(n.length) n[n.length-1].status = status; return n; });
+  const updateLastStep = (updates: Partial<ProcessingStep>) => {
+    setAgentSteps(prev => { 
+        if (!prev.length) return prev;
+        const n = [...prev]; 
+        n[n.length-1] = { ...n[n.length-1], ...updates }; 
+        return n; 
+    });
   };
   const getStatusColor = (s: string) => s === 'PROCESSING' ? 'text-brand-cyan' : s === 'WAITING_APPROVAL' ? 'text-brand-orange' : 'text-brand-mint';
 

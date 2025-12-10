@@ -1,4 +1,5 @@
 
+
 export enum AgentType {
   MANAGER = 'MANAGER',
   INTERPRETER = 'INTERPRETER',
@@ -47,7 +48,7 @@ export interface DashboardState {
 }
 
 export interface AgentAction {
-  type: 'NAVIGATE' | 'FILL_INPUT' | 'CLICK' | 'ANALYZE_CHART' | 'EXTRACT_DATA' | 'SCREENSHOT' | 'READ_PAGE' | 'WAIT' | 'SCROLL' | 'VERIFY' | 'HOVER' | 'GET_ELEMENT_VALUE' | 'WAIT_FOR_SELECTOR' | 'BROWSE' | 'browse';
+  type: 'NAVIGATE' | 'FILL_INPUT' | 'CLICK' | 'ANALYZE_CHART' | 'EXTRACT_DATA' | 'SCREENSHOT' | 'READ_PAGE' | 'WAIT' | 'SCROLL' | 'VERIFY' | 'HOVER' | 'GET_ELEMENT_VALUE' | 'WAIT_FOR_SELECTOR' | 'BROWSE';
   target?: string;
   page?: string;
   url?: string;
@@ -64,11 +65,22 @@ export interface AgentAction {
   payload?: any;
 }
 
+export interface BrowserResult {
+  url: string;
+  text?: string;
+  links?: string[];
+  screenshot?: string;
+  timestamp?: string;
+}
+
 export interface ProcessingStep {
   agent: AgentType;
   status: 'pending' | 'processing' | 'completed' | 'waiting_approval';
   description: string;
   confidence?: number;
+  actionType?: string;
+  data?: any;
+  payload?: BrowserResult | null;
 }
 
 // Sub-Agent Types

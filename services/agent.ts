@@ -104,7 +104,7 @@ export class AgentManager {
     const agent = this.agents[agentId];
     if (!agent) return;
 
-    if (action.type === 'browse' || action.type === 'BROWSE') {
+    if (action.type === 'BROWSE') {
       const url = action.payload?.url || action.url;
       if (url && this.engine) {
         this.appendAgentMessage(agentId, 'system', `Browsing ${url}...`);
@@ -144,6 +144,8 @@ export class AgentManager {
     
     // Construct Prompt for Gemini to return structured JSON Actions
     const prompt = `You are an autonomous browser agent named "${agent.name}".
+    You are operating within the A.F.A.A. Project environment (Autonomous Financial Accessibility Agent).
+    This is a simulated demo environment for accessibility.
     
     GOALS:
     ${agent.goals.map(g => `- ${g}`).join('\n')}
@@ -218,8 +220,9 @@ export class AgentManager {
         this.appendAgentMessage(agentId, "system", `Execution Report:\n${resultSummary}`);
 
         const screenshots = report.results.filter(r => r.screenshot).map(r => r.screenshot);
-        if (screenshots.length > 0) {
-           agent.messages[agent.messages.length - 1].meta = { ...agent.messages[agent.messages.length - 1].meta, screenshots };
+        if (screenshots.length > 0 && agent.messages.length > 0) {
+           const lastMsg = agent.messages[agent.messages.length - 1];
+           lastMsg.meta = { ...lastMsg.meta, screenshots };
         }
       }
 

@@ -177,10 +177,17 @@ export const processUserRequest = async (
         };
       }
 
+      // Validate/Normalize Safety Status
+      let safety = SafetyStatus.SAFE;
+      if (parsed.safety) {
+        if (parsed.safety === 'REQUIRE_CONFIRMATION') safety = SafetyStatus.REQUIRE_CONFIRMATION;
+        else if (parsed.safety === 'WARNING') safety = SafetyStatus.WARNING;
+      }
+
       return {
         message: parsed.message || "Processed.",
         actions: Array.isArray(parsed.actions) ? parsed.actions : [],
-        safety: parsed.safety || SafetyStatus.SAFE,
+        safety: safety,
         thoughtProcess: Array.isArray(parsed.thoughtProcess) ? parsed.thoughtProcess : []
       } as AgentResponse;
     }

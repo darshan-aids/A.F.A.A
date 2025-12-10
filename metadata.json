@@ -1,5 +1,7 @@
 {
   "name": "A.F.A.A. - Autonomous Financial Accessibility Agent",
   "description": "A multi-agent system powered by Gemini to navigate inaccessible financial interfaces for users with disabilities.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "microphone"
+  ]
 }

@@ -53,6 +53,13 @@ export class BrowserAutomationEngine {
     this.actionResults = [];
     console.log(`[AUTOMATION] Starting execution of ${actions.length} actions`);
 
+    if (typeof document === 'undefined') {
+        return {
+            results: actions.map(a => ({ type: a.type, success: false, timestamp: new Date().toISOString(), message: "Automation requires a browser environment (DOM)." })),
+            summary: "Execution skipped: No DOM environment."
+        };
+    }
+
     for (const action of actions) {
       // Dispatch start event for UI visualization
       this.dispatchLifecycleEvent('agent-action-start', action);
@@ -79,7 +86,9 @@ export class BrowserAutomationEngine {
   }
 
   private dispatchLifecycleEvent(eventName: string, detail: any) {
-    window.dispatchEvent(new CustomEvent(eventName, { detail }));
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(eventName, { detail }));
+    }
   }
 
   private async executeAction(action: AutomationAction): Promise<ActionResult> {
@@ -157,14 +166,15 @@ export class BrowserAutomationEngine {
       return { type: 'BROWSE', success: false, timestamp: new Date().toISOString(), message: 'No URL specified for browsing' };
     }
     try {
-      const { text, links } = await fetchPageText(action.url);
+      const { text, links, screenshot } = await fetchPageText(action.url);
       const summary = text.slice(0, 500) + (text.length > 500 ? '...' : '');
       return { 
         type: 'BROWSE', 
         success: true, 
         timestamp: new Date().toISOString(), 
         message: `Browsed ${action.url}`,
-        data: { text, links }
+        data: { text, links },
+        screenshot: screenshot
       };
     } catch (e) {
       return { type: 'BROWSE', success: false, timestamp: new Date().toISOString(), message: 'Browse failed', error: String(e) };

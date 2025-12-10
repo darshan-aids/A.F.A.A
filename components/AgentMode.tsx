@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { AgentManager } from "../services/agent";
 import { ProcessingStep, AgentType, AgentAction } from "../types";
+import MiniBrowser from "./MiniBrowser";
 
 type Props = {
   agentManager: AgentManager;
@@ -45,9 +46,6 @@ export const AgentMode: React.FC<Props> = ({ agentManager, onExit, steps = [], o
 
   const handleNav = (action: 'first' | 'last' | 'prev' | 'next' | 'page-up' | 'page-down') => {
       if (!steps.length) return;
-      // Simple logic: we don't track "current" index in state to keep it simple, 
-      // instead we use scroll position or just simple jumps. 
-      // For "Page Up/Down", we can just scroll by container height.
       
       if (action === 'first') scrollToStep(0);
       if (action === 'last') scrollToStep(steps.length - 1);
@@ -136,6 +134,14 @@ export const AgentMode: React.FC<Props> = ({ agentManager, onExit, steps = [], o
                 <div className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap font-mono">
                    {step.description}
                 </div>
+
+                {/* MINI BROWSER VISUALIZATION */}
+                {step.actionType === 'BROWSE' && (
+                  <MiniBrowser 
+                    result={step.payload} 
+                    onOpenLink={(url) => runBrowse(url)}
+                  />
+                )}
 
                 {step.confidence !== undefined && (
                    <div className="mt-3 flex items-center gap-2">
